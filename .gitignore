@@ -1,0 +1,24 @@
+# (API keys)
+.env
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Docker/Logs
+logs/
+*.log
+.DS_Store
+
+# BD and heavy arts (its should be on ESXi, not on GitHub)
+data/
+minio_data/
+qdrant_data/
+mongo_data/
+postgres_data/
+
+
