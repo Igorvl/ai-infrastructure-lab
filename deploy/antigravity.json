@@ -1,0 +1,15 @@
+{
+  "routing_rules": {
+    "primary_model": "gemini-3-pro",
+    "fallback_chain": ["glm-5", "ernie-bot-5"],
+    "circuit_breaker_timeout": 5
+  },
+  "constraints": {
+    "max_context_tokens": 32000,
+    "force_truncation_on_fallback": true
+  },
+  "monitoring": {
+    "log_level": "INFO",
+    "enable_cost_tracking": true
+  }
+}
