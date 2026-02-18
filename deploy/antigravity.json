@@ -1,15 +1,45 @@
 {
-  "routing_rules": {
-    "primary_model": "gemini-3-pro",
-    "fallback_chain": ["glm-5", "ernie-bot-5"],
-    "circuit_breaker_timeout": 5
+  "routing_strategy": "priority_fallback",
+  "fallback_order": [
+    "primary_reasoning",
+    "secondary_reasoning",
+    "infrastructure_expert",
+    "legacy_fallback"
+  ],
+  "models": {
+    "primary_reasoning": {
+      "provider": "google",
+      "model_name": "gemini-3-pro-preview",
+      "thinking_level": "high",
+      "max_tokens": 65535,
+      "timeout": 45,
+      "api_key_env": "GEMINI_API_KEY"
+    },
+    "secondary_reasoning": {
+      "provider": "deepseek",
+      "model_name": "deepseek-chat",
+      "api_base": "https://api.deepseek.com",
+      "api_key_env": "DEEPSEEK_API_KEY"
+    },
+    "infrastructure_expert": {
+      "provider": "openai",
+      "model_name": "qwen/qwen-2.5-72b-instruct",
+      "api_base": "https://api.siliconflow.cn/v1",
+      "api_key_env": "SILICONFLOW_API_KEY",
+      "description": "High-throughput expert for system tasks"
+    },
+    "legacy_fallback": {
+      "provider": "zhipu",
+      "model_name": "glm-5",
+      "api_key_env": "GLM_API_KEY",
+      "extra_body": {
+        "enable_thinking": true
+      },
+      "description": "Zhipu AI Frontier Model (released Feb 2026)"
+    }
   },
-  "constraints": {
-    "max_context_tokens": 32000,
-    "force_truncation_on_fallback": true
-  },
-  "monitoring": {
-    "log_level": "INFO",
-    "enable_cost_tracking": true
+  "circuit_breaker": {
+    "failure_threshold": 3,
+    "recovery_timeout": 60
   }
 }
