@@ -1,30 +1,37 @@
 services:
-  # --- Layer 1: Routing Gateway (Our Custom Brain) ---
   llm-router:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.router
+      args:
+        HTTP_PROXY: "http://172.17.0.1:10809"
+        HTTPS_PROXY: "http://172.17.0.1:10809"
     container_name: ai-router
     restart: unless-stopped
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - ENV_TYPE=production
       - CONFIG_PATH=deploy/antigravity.json
-      # Секреты берем из .env (никогда не хардкодим!)
+      # Настройки прокси для работы внутри контейнера (Runtime)
+      - HTTP_PROXY=socks5://172.17.0.1:10808
+      - HTTPS_PROXY=socks5://172.17.0.1:10808
+      - ALL_PROXY=socks5://172.17.0.1:10808
+      # Ключи API
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GLM_API_KEY=${GLM_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
     volumes:
       - ../routing/logs:/app/logs
     networks:
       - ai-net
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    depends_on:
+      - qdrant
+      - postgres
 
-  # --- Layer 2: Data Storage ---
   qdrant:
     image: qdrant/qdrant:latest
     container_name: ai-qdrant
@@ -64,7 +71,6 @@ services:
     networks:
       - ai-net
 
-  # --- Layer 3: Frontend ---
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: ai-webui
@@ -74,9 +80,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434 # Если локальный Ollama
-      - OPENAI_API_BASE_URL=http://ai-router:8000/v1 # Указываем на НАШ роутер
-      - OPENAI_API_KEY=sk-mock-key # Роутер примет любой ключ или проверит свой
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OPENAI_API_BASE_URL=http://ai-router:8000/v1
+      - OPENAI_API_KEY=sk-mock-key
     volumes:
       - webui_data:/app/backend/data
     networks:

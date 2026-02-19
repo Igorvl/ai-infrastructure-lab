@@ -7,15 +7,15 @@
     "legacy_fallback"
   ],
   "models": {
-    "primary_reasoning": {
+      "primary_reasoning": {
       "provider": "google",
-      "model_name": "gemini-3-pro-preview",
-      "thinking_level": "high",
-      "max_tokens": 65535,
-      "timeout": 45,
+      "model_name": "gemini-3-flash-preview", 
+      "max_tokens": 8192, 
+      "timeout": 30,
+      "temperature": 1.0,
       "api_key_env": "GEMINI_API_KEY"
     },
-    "secondary_reasoning": {
+      "secondary_reasoning": {
       "provider": "deepseek",
       "model_name": "deepseek-chat",
       "api_base": "https://api.deepseek.com",

@@ -4,3 +4,4 @@ litellm
 pydantic
 python-dotenv
 tiktoken
+httpx[socks]
