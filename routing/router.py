@@ -1,28 +1,31 @@
 import os
 import json
 import logging
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+import time
 from typing import List, Optional, Dict, Any
-from litellm import completion
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
+from litellm import completion, exceptions
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s:%(levelname)s - %(message)s"
+)
 logger = logging.getLogger("AI-Gateway")
 
-app = FastAPI(title="AI Infrastructure Gateway v3.0")
+app = FastAPI(title="AI Design Infrastructure Gateway")
 
-# --- КОНФИГУРАЦИЯ ---
-CONFIG_PATH = os.getenv("CONFIG_PATH", "deploy/antigravity.json")
+# Загрузка конфигурации
+CONFIG_PATH = os.getenv("CONFIG_PATH", "deploy/routing_config.json")
 try:
     with open(CONFIG_PATH, "r") as f:
-        CONFIG = json.load(f)
+        ROUTING_CONFIG = json.load(f)
     logger.info(f"✅ Configuration loaded from {CONFIG_PATH}")
 except Exception as e:
     logger.error(f"❌ Failed to load config: {e}")
-    CONFIG = {"models": {}}
+    ROUTING_CONFIG = {}
 
-# --- МОДЕЛИ ДАННЫХ ---
 class Message(BaseModel):
     role: str
     content: str
@@ -30,85 +33,87 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     model: str
     messages: List[Message]
-    temperature: Optional[float] = 0.7
+    temperature: Optional[float] = 1.0 
     max_tokens: Optional[int] = None
+    stream: Optional[bool] = False
 
-# --- ЭНДПОИНТЫ ---
-@app.get("/health")
-async def health_check():
-    return {"status": "operational", "models_loaded": list(CONFIG.get("models", {}).keys())}
+def get_api_key(env_var_name: str) -> str:
+    """Безопасное получение ключа из переменных окружения"""
+    key = os.getenv(env_var_name)
+    if not key:
+        logger.warning(f"⚠️ API Key variable '{env_var_name}' is not set!")
+        return ""
+    return key
 
 @app.get("/v1/models")
 async def list_models():
-    data = []
-    for model_id, params in CONFIG.get("models", {}).items():
-        data.append({
-            "id": model_id,
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": params.get("provider", "unknown"),
-            "name": f"{model_id} ({params.get('model_name')})"
-        })
-    return {"object": "list", "data": data}
+    """Возвращаем список доступных моделей для совместимости с клиентами"""
+    return {
+        "object": "list",
+        "data": [
+            {"id": "primary_reasoning", "object": "model", "owned_by": "system"},
+            {"id": "gemini-3-flash", "object": "model", "owned_by": "google"},
+            {"id": "deepseek-v3", "object": "model", "owned_by": "alibaba"},
+            {"id": "qwen-max", "object": "model", "owned_by": "alibaba"}
+        ]
+    }
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatRequest):
-    requested_model = request.model
+    # 1. Определяем конфигурацию (по умолчанию primary_reasoning)
+    target_config = ROUTING_CONFIG.get("primary_reasoning")
+    if not target_config:
+        raise HTTPException(status_code=500, detail="Configuration for primary_reasoning not found")
+
+    messages = [msg.model_dump() for msg in request.messages]
     
-    # 1. Fallback логика выбора модели
-    if requested_model not in CONFIG["models"]:
-        logger.warning(f"Requested model '{requested_model}' not found. Defaulting to Primary.")
-        target_role = CONFIG["fallback_order"][0]
-    else:
-        target_role = requested_model
-
-    model_cfg = CONFIG["models"][target_role]
-    
-    # --- ИСПРАВЛЕНИЕ: НОРМАЛИЗАЦИЯ ИМЕНИ МОДЕЛИ ---
-    provider = model_cfg["provider"]
-    real_model_name = model_cfg["model_name"]
-    
-    # LiteLLM требует специфичные префиксы
-    if provider == "google":
-        # Меняем 'google' на 'gemini'
-        litellm_model = f"gemini/{real_model_name}"
-    elif provider == "openai":
-        # Для OpenAI-compatible (DeepSeek/Qwen) префикс часто не нужен или openai/
-        litellm_model = real_model_name
-    elif provider == "zhipu":
-        # Zhipu AI
-        litellm_model = f"zhipu/{real_model_name}"
-    else:
-        # Default: provider/model
-        litellm_model = f"{provider}/{real_model_name}"
-
-    # 3. Собираем аргументы
-    kwargs = {
-        "model": litellm_model,
-        "messages": [m.dict() for m in request.messages],
-        "temperature": request.temperature,
-        "max_tokens": request.max_tokens or model_cfg.get("max_tokens", 4096),
-        "api_key": os.getenv(model_cfg.get("api_key_env")),
-    }
-
-    if "api_base" in model_cfg:
-        kwargs["api_base"] = model_cfg["api_base"]
-    
-    if "extra_body" in model_cfg:
-        kwargs["extra_body"] = model_cfg["extra_body"]
-
-    logger.info(f"🚀 Routing: {target_role} -> {litellm_model}")
-
+    # === ПОПЫТКА №1: ОСНОВНАЯ МОДЕЛЬ ===
     try:
-        # Вызов LiteLLM
-        response = completion(**kwargs)
-        return response
+        logger.info(f"🚀 Routing: primary_reasoning -> {target_config['provider']}/{target_config['model_name']}")
         
-    except Exception as e:
-        logger.error(f"🔥 Error calling {target_role}: {str(e)}")
-        # Возвращаем 500, чтобы было видно в логах клиента, но можно сделать Fallback
-        raise HTTPException(status_code=500, detail=f"Provider Error: {str(e)}")
+        response = completion(
+            model=f"{target_config['provider']}/{target_config['model_name']}",
+            messages=messages,
+            api_key=get_api_key(target_config.get("api_key_env")),
+            base_url=target_config.get("api_base"), # Важно для совместимых API
+            temperature=request.temperature,
+            max_tokens=request.max_tokens or target_config.get("max_tokens"),
+            timeout=target_config.get("timeout", 30)
+        )
+        return response
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    except Exception as e:
+        logger.error(f"🔥 Primary model failed: {str(e)}")
+        
+        # === CIRCUIT BREAKER: ЗАПУСК РЕЗЕРВНЫХ МОДЕЛЕЙ ===
+        fallbacks = ROUTING_CONFIG.get("fallbacks", [])
+        
+        if not fallbacks:
+            logger.error("❌ No fallbacks configured!")
+            raise HTTPException(status_code=502, detail=f"Primary model failed and no fallbacks available. Error: {str(e)}")
+
+        logger.info("⚠️ Initiating Fallback Sequence...")
+
+        for i, fallback_cfg in enumerate(fallbacks, 1):
+            try:
+                model_full_name = f"{fallback_cfg['provider']}/{fallback_cfg['model_name']}"
+                logger.info(f"🛡️ Attempting Fallback #{i}: {model_full_name}")
+
+                response = completion(
+                    model=model_full_name,
+                    messages=messages,
+                    api_key=get_api_key(fallback_cfg.get("api_key_env")),
+                    base_url=fallback_cfg.get("api_base"),
+                    temperature=request.temperature,
+                    timeout=fallback_cfg.get("timeout", 45) # Даем больше времени резерву
+                )
+                logger.info(f"✅ Fallback #{i} ({model_full_name}) succeeded!")
+                return response
+
+            except Exception as fallback_error:
+                logger.warning(f"⚠️ Fallback #{i} failed: {str(fallback_error)}")
+                continue # Пробуем следующую модель в списке
+
+        # Если все резервы исчерпаны
+        logger.critical("💀 All systems down. Routing failed.")
+        raise HTTPException(status_code=503, detail="Service Unavailable: All AI models (primary and fallbacks) are unreachable.")

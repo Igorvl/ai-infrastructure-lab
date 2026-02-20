@@ -16,14 +16,19 @@ services:
       - ENV_TYPE=production
       - CONFIG_PATH=deploy/antigravity.json
       # Настройки прокси для работы внутри контейнера (Runtime)
-      - HTTP_PROXY=socks5://172.17.0.1:10808
-      - HTTPS_PROXY=socks5://172.17.0.1:10808
-      - ALL_PROXY=socks5://172.17.0.1:10808
+      - http_proxy=http://host.docker.internal:10808
+      - https_proxy=http://host.docker.internal:10808
+      - all_proxy=http://host.docker.internal:10808
+      - HTTP_PROXY=http://host.docker.internal:10808
+      - HTTPS_PROXY=http://host.docker.internal:10808
+      - ALL_PROXY=http://host.docker.internal:10808
+      # Добавим дебаг, если что
+      - LITELLM_LOG=DEBUG
       # Ключи API
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ALIBABA_API_KEY=${ALIBABA_API_KEY}
       - GLM_API_KEY=${GLM_API_KEY}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
     volumes:
       - ../routing/logs:/app/logs
     networks:
