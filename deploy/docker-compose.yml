@@ -22,13 +22,20 @@ services:
       - HTTP_PROXY=http://host.docker.internal:10808
       - HTTPS_PROXY=http://host.docker.internal:10808
       - ALL_PROXY=http://host.docker.internal:10808
+      # --- ПРЯМОЙ ДОСТУП ДЛЯ КИТАЯ (БЕЗ ПРОКСИ) ---
+      - no_proxy=api.siliconflow.com,localhost,127.0.0.1
+      - NO_PROXY=api.siliconflow.com,localhost,127.0.0.1
+      - no_proxy=dashscope.aliyuncs.com,open.bigmodel.cn
+      - NO_PROXY=dashscope.aliyuncs.com,open.bigmodel.cn
+      # --------------------------------------------
       # Добавим дебаг, если что
       - LITELLM_LOG=DEBUG
       # Ключи API
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - ALIBABA_API_KEY=${ALIBABA_API_KEY}
-      - GLM_API_KEY=${GLM_API_KEY}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
+      # - ALIBABA_API_KEY=${ALIBABA_API_KEY}
+      # - GLM_API_KEY=${GLM_API_KEY}
+      # - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
     volumes:
       - ../routing/logs:/app/logs
     networks:

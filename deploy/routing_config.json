@@ -9,23 +9,23 @@
   "fallbacks": [
     {
       "provider": "openai",
-      "model_name": "deepseek-v3",
-      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "api_key_env": "ALIBABA_API_KEY",
+      "model_name": "deepseek-ai/DeepSeek-V3.2",
+      "api_base": "https://api.siliconflow.com/v1",
+      "api_key_env": "SILICONFLOW_API_KEY",
       "timeout": 45
     },
     {
       "provider": "openai",
-      "model_name": "qwen-max",
-      "api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "api_key_env": "ALIBABA_API_KEY",
+      "model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "api_base": "https://api.siliconflow.com/v1",
+      "api_key_env": "SILICONFLOW_API_KEY",
       "timeout": 45
     },
     {
       "provider": "openai",
-      "model_name": "glm-5",
-      "api_base": "https://open.bigmodel.cn/api/paas/v4/",
-      "api_key_env": "GLM_API_KEY",
+      "model_name": "zai-org/GLM-5",
+      "api_base": "https://api.siliconflow.com/v1",
+      "api_key_env": "SILICONFLOW_API_KEY",
       "timeout": 45
     }
   ]
