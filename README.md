@@ -1,32 +1,44 @@
 AI Design Workspace: Enterprise MLOps Architecture
 
-## Project Overview
-A multi-layered RAG system and workspace designed for AI designers working with heavy graphics (Nano Banana) and LLMs. This project addresses multi-account management, strict context limits, and secure long-term storage of "Chain of Thought" (CoT) reasoning.
+🧬 AI Design Infrastructure Lab (Project DNA)
+Enterprise MLOps Architecture for Multimodal R&D
 
-## Architecture/ LLM Gateway
+🧠 Intelligent LLM Gateway (The Brain)
+The heart of the system is a highly available, asynchronous API gateway built using FastAPI and LiteLLM. It implements a Tiered Reasoning Strategy, balancing state-of-the-art cognitive capabilities with inference efficiency.
 
-### 🧠 Cognitive Reasoning Grid (LLM Gateway)
+🛠 Key Engineering Features:
+Asynchronous Processing: Full transition to acompletion and async/await event loops for non-blocking handling of heavy Vision payloads.
 
-The system implements a **Tiered Reasoning Strategy**, optimizing the balance between model cognitive capabilities and inference costs.
+Custom SSE Streaming: Implemented a custom Server-Sent Events (SSE) generator. This addressed complex Pydantic object serialization issues (AttributeError) and enabled real-time token streaming to Open WebUI.
 
-**Routing Logic & Roles:**
+Vision-Aware Routing: The gateway automatically detects multimodal content (images) within the request payload and dynamically reconfigures the fallback chain to prioritize Vision-capable models.
 
-1.  **Primary Reasoning (Tier 1):** `Gemini 3 Pro Preview` (Google).
-    * *Config:* `thinking_level: high`.
-    * *Role:* Handles complex algorithmic logic, architectural planning, and RAG synthesis. Acts as the flagship model with an extended context window (65k output).
-2.  **Secondary Reasoning (Tier 2):** `DeepSeek-V3`.
-    * *Role:* Specialized in code analysis, refactoring, and unit test generation. Serves as a high-speed, cost-effective alternative for medium-complexity tasks.
-3.  **Infrastructure Expert (Tier 3):** `Qwen-2.5-72B` (via SiliconFlow).
-    * *Role:* The DevOps "workhorse." Optimized for Bash scripting, Dockerfile management, and system log parsing.
-4.  **Legacy Fallback (Tier 4):** `GLM-5` (Zhipu AI).
-    * *Config:* `enable_thinking: true`.
-    * *Role:* Backup channel with Chain of Thought (CoT) enabled. Ensures system fault tolerance and redundancy if primary providers fail.
+Region-Specific Split Tunneling: Network traffic to Google AI Studio (v1beta API) is isolated within Docker and routed via VLESS/Shadowsocks to bypass regional restrictions.
 
-**Technologies:** LiteLLM, Custom Circuit Breaker (Python/FastAPI), Docker.
+🚀 Routing & Failover Logic:
+Primary Reasoning (Tier 1): Gemini 3 Flash (Google API v1beta).
 
-## Infrastructure & Disaster Recovery
-Deployed via ESXi + Docker. Includes an automated backup system (Restic/Borg) with regular restore.sh script testing within an isolated VLAN.
+Role: Core reasoning engine for UI/UX analysis and architectural planning.
 
-## Quick Start
-1. cp deploy/.env.example deploy/.env (Fill in your API keys)
-2. docker-compose -f deploy/docker-compose.yml up -d
+Multimodal Fallback: Qwen2-VL (via SiliconFlow).
+
+Role: Redundant vision channel for screenshot analysis and UI element detection if primary quotas are exhausted.
+
+Secondary Reasoning (Tier 2): DeepSeek-V3.
+
+Role: Deep code analysis and logical refactoring.
+
+DevOps Workhorse (Tier 3): Qwen-3-Coder (480B).
+
+Role: System log parsing, Bash scripting, and Docker configuration generation.
+
+🏗 Infrastructure Stack
+Virtualization: VMware ESXi 7.0 (On-Premise R&D Lab).
+
+Compute: Intel Xeon E5-2680 v3, 64GB RAM.
+
+Storage: 90TB+ LVM storage with hot-resize capabilities.
+
+Networking: Split tunneling, Docker-native routing, isolated VLANs.
+
+Core Stack: Docker, Python 3.12, FastAPI, LiteLLM, Qdrant, MongoDB/Postgres, MinIO.
