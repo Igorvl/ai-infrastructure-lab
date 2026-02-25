@@ -1,32 +1,45 @@
 {
-  "primary_reasoning": {
-    "provider": "gemini",
-    "model_name": "gemini-3-flash",
-    "max_tokens": 1000000,
-    "timeout": 30,
-    "api_key_env": "GEMINI_API_KEY"
-  },
-  "fallbacks": [
+  "model_list": [
     {
-      "provider": "openai",
-      "model_name": "deepseek-ai/DeepSeek-V3.2",
-      "api_base": "https://api.siliconflow.com/v1",
-      "api_key_env": "SILICONFLOW_API_KEY",
-      "timeout": 45
+      "model_name": "primary_reasoning",
+      "litellm_params": {
+        "model": "gemini/gemini-3-flash-preview",
+        "api_key_env": "GEMINI_API_KEY",
+        "api_version": "v1beta",
+        "fallbacks": ["deepseek-v3", "qwen-max", "GLM_5"]
+      }
     },
     {
-      "provider": "openai",
-      "model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
-      "api_base": "https://api.siliconflow.com/v1",
-      "api_key_env": "SILICONFLOW_API_KEY",
-      "timeout": 45
+      "model_name": "deepseek-v3",
+      "litellm_params": {
+        "model": "openai/deepseek-ai/DeepSeek-V3.2",
+        "api_base": "https://api.siliconflow.com/v1",
+        "api_key_env": "SILICONFLOW_API_KEY"
+      }
     },
     {
-      "provider": "openai",
-      "model_name": "zai-org/GLM-5",
-      "api_base": "https://api.siliconflow.com/v1",
-      "api_key_env": "SILICONFLOW_API_KEY",
-      "timeout": 45
+      "model_name": "qwen-max",
+      "litellm_params": {
+        "model": "openai/Qwen/Qwen3-Coder-480B-A35B-Instruct",
+        "api_base": "https://api.siliconflow.com/v1",
+        "api_key_env": "SILICONFLOW_API_KEY"
+      }
+    },
+    {
+      "model_name": "GLM_5",
+      "litellm_params": {
+        "model": "openai/zai-org/GLM-5",
+        "api_base": "https://api.siliconflow.com/v1",
+        "api_key_env": "SILICONFLOW_API_KEY"
+      }
+    },
+    {
+      "model_name": "qwen-vision",
+      "litellm_params": {
+        "model": "openai/Qwen/Qwen2-VL-72B-Instruct",
+        "api_base": "https://api.siliconflow.com/v1",
+        "api_key_env": "SILICONFLOW_API_KEY"
+      }
     }
   ]
 }

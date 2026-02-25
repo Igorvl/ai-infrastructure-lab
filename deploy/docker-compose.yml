@@ -15,6 +15,8 @@ services:
     environment:
       - ENV_TYPE=production
       - CONFIG_PATH=deploy/antigravity.json
+      - WEBUI_URL=http://172.25.9.33:3000
+
       # Настройки прокси для работы внутри контейнера (Runtime)
       - http_proxy=http://host.docker.internal:10808
       - https_proxy=http://host.docker.internal:10808
@@ -22,11 +24,13 @@ services:
       - HTTP_PROXY=http://host.docker.internal:10808
       - HTTPS_PROXY=http://host.docker.internal:10808
       - ALL_PROXY=http://host.docker.internal:10808
+
       # --- ПРЯМОЙ ДОСТУП ДЛЯ КИТАЯ (БЕЗ ПРОКСИ) ---
       - no_proxy=api.siliconflow.com,localhost,127.0.0.1
       - NO_PROXY=api.siliconflow.com,localhost,127.0.0.1
       - no_proxy=dashscope.aliyuncs.com,open.bigmodel.cn
       - NO_PROXY=dashscope.aliyuncs.com,open.bigmodel.cn
+
       # --------------------------------------------
       # Добавим дебаг, если что
       - LITELLM_LOG=DEBUG
@@ -38,6 +42,7 @@ services:
       # - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
     volumes:
       - ../routing/logs:/app/logs
+      - ./antigravity.json:/app/deploy/antigravity.json
     networks:
       - ai-net
     depends_on:
@@ -95,6 +100,10 @@ services:
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - OPENAI_API_BASE_URL=http://ai-router:8000/v1
       - OPENAI_API_KEY=sk-mock-key
+
+      # --- ЗАПРЕЩАЕМ ПРОКСИ ДЛЯ ВНУТРЕННЕЙ СЕТИ ---
+      - no_proxy=localhost,127.0.0.1,ai-router,host.docker.internal
+      - NO_PROXY=localhost,127.0.0.1,ai-router,host.docker.internal
     volumes:
       - webui_data:/app/backend/data
     networks:
