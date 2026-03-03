@@ -5,3 +5,5 @@ pydantic
 python-dotenv
 tiktoken
 httpx[socks]
+python-multipart
+edge-tts

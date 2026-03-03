@@ -1,45 +1,76 @@
 {
-  "model_list": [
-    {
-      "model_name": "primary_reasoning",
-      "litellm_params": {
-        "model": "gemini/gemini-3-flash-preview",
-        "api_key_env": "GEMINI_API_KEY",
-        "api_version": "v1beta",
-        "fallbacks": ["deepseek-v3", "qwen-max", "GLM_5"]
-      }
-    },
-    {
-      "model_name": "deepseek-v3",
-      "litellm_params": {
-        "model": "openai/deepseek-ai/DeepSeek-V3.2",
-        "api_base": "https://api.siliconflow.com/v1",
-        "api_key_env": "SILICONFLOW_API_KEY"
-      }
-    },
-    {
-      "model_name": "qwen-max",
-      "litellm_params": {
-        "model": "openai/Qwen/Qwen3-Coder-480B-A35B-Instruct",
-        "api_base": "https://api.siliconflow.com/v1",
-        "api_key_env": "SILICONFLOW_API_KEY"
-      }
-    },
-    {
-      "model_name": "GLM_5",
-      "litellm_params": {
-        "model": "openai/zai-org/GLM-5",
-        "api_base": "https://api.siliconflow.com/v1",
-        "api_key_env": "SILICONFLOW_API_KEY"
-      }
-    },
-    {
-      "model_name": "qwen-vision",
-      "litellm_params": {
-        "model": "openai/Qwen/Qwen2-VL-72B-Instruct",
-        "api_base": "https://api.siliconflow.com/v1",
-        "api_key_env": "SILICONFLOW_API_KEY"
-      }
-    }
-  ]
+    "model_list": [
+        {
+            "model_name": "primary_reasoning",
+            "litellm_params": {
+                "model": "gemini/gemini-2.5-flash-lite",
+                "api_key_env": "GEMINI_API_KEY",
+                "fallbacks": [
+                    "gemini-2.0-fallback",
+                    "deepseek-v3",
+                    "qwen-max",
+                    "GLM_5"
+                ]
+            }
+        },
+        {
+            "model_name": "gemini-2.5-flash",
+            "litellm_params": {
+                "model": "gemini/gemini-2.5-flash",
+                "api_key_env": "GEMINI_API_KEY",
+                "fallbacks": [
+                    "gemini-2.0-fallback",
+                    "deepseek-v3"
+                ]
+            }
+        },
+        {
+            "model_name": "gemini-2.0-fallback",
+            "litellm_params": {
+                "model": "gemini/gemini-2.0-flash",
+                "api_key_env": "GEMINI_API_KEY"
+            }
+        },
+        {
+            "model_name": "deepseek-v3",
+            "litellm_params": {
+                "model": "openai/deepseek-ai/DeepSeek-V3.2",
+                "api_base": "https://api.siliconflow.com/v1",
+                "api_key_env": "SILICONFLOW_API_KEY"
+            }
+        },
+        {
+            "model_name": "GLM_5",
+            "litellm_params": {
+                "model": "openai/zai-org/GLM-5",
+                "api_base": "https://api.siliconflow.com/v1",
+                "api_key_env": "SILICONFLOW_API_KEY"
+            }
+        },
+        {
+            "model_name": "qwen-max",
+            "litellm_params": {
+                "model": "openai/Qwen/Qwen3-Coder-480B-A35B-Instruct",
+                "api_base": "https://api.siliconflow.com/v1",
+                "api_key_env": "SILICONFLOW_API_KEY"
+            }
+        },
+        {
+            "model_name": "qwen-vision",
+            "litellm_params": {
+                "model": "openai/Qwen/Qwen3-VL-32B-Instruct",
+                "api_base": "https://api.siliconflow.com/v1",
+                "api_key_env": "SILICONFLOW_API_KEY"
+            }
+        },
+        {
+            "model_name": "qwen-coder",
+            "litellm_params": {
+                "model": "openai/Qwen/Qwen3-Coder-32B-Instruct",
+                "api_base": "https://api.siliconflow.com/v1",
+                "api_key_env": "SILICONFLOW_API_KEY"
+            }
+        }
+    ]
 }
+
