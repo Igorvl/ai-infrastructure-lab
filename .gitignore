@@ -3,6 +3,7 @@
 *.pem
 *.key
 *.mp3
+*.wav
 
 # Python
 __pycache__/

@@ -15,9 +15,11 @@ services:
       - GEMINI_API_KEY_2=${GEMINI_API_KEY_2}
       - GEMINI_API_KEY_3=${GEMINI_API_KEY_3}
       - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
+      - TORCH_HOME=/tmp/torch_cache
       - http_proxy=http://host.docker.internal:10808
       - https_proxy=http://host.docker.internal:10808
       - no_proxy=localhost,127.0.0.1,ai-router,tts-kokoro,tts-fish,tts-sovits,ai-audio-host,generativelanguage.googleapis.com,api.siliconflow.com
+
     volumes:
       - ../routing:/app/routing
       - ./antigravity.json:/app/deploy/antigravity.json
@@ -54,17 +56,6 @@ services:
     networks:
       - ai-net
 
-  tts-heavy:
-    image: fishaudio/fish-speech:latest
-    container_name: tts-fish
-    restart: always
-    volumes:
-      - ./models/fish:/app/models
-      - /mnt/storage/books:/app/books
-      - ./audio_out:/app/output
-    entrypoint: ["python3", "-m", "tools.api_server", "--device", "cpu", "--host", "0.0.0.0", "--port", "8080"]
-    networks:
-      - ai-net
 
   # ========== GPT-SoVITS: Клонирование голоса ==========
   tts-sovits:

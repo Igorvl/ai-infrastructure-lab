@@ -1,16 +1,17 @@
-import os, json, logging, httpx, uuid, re, asyncio, time
+import os, json, logging, httpx, uuid, re, asyncio, time, struct
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from litellm import acompletion
 
-# Edge TTS для русского
+# Silero TTS для русского (локальная модель, CPU)
 try:
-    import edge_tts
-    EDGE_TTS_AVAILABLE = True
+    import torch
+    import numpy as np
+    SILERO_AVAILABLE = True
 except ImportError:
-    EDGE_TTS_AVAILABLE = False
+    SILERO_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(message)s")
 logger = logging.getLogger("AI-Router")
@@ -21,7 +22,26 @@ AUDIO_PUBLIC_URL = os.getenv("AUDIO_PUBLIC_URL", "http://172.25.9.33:8090")
 os.makedirs(AUDIO_OUTPUT_PATH, exist_ok=True)
 
 CONFIG_PATH = os.getenv("CONFIG_PATH", "deploy/antigravity.json")
-logger.info(f"Edge TTS: {'available' if EDGE_TTS_AVAILABLE else 'NOT available (pip install edge-tts)'}")
+
+# ========== SILERO TTS МОДЕЛЬ ==========
+silero_model = None
+
+def init_silero():
+    global silero_model
+    if not SILERO_AVAILABLE:
+        logger.warning("Silero TTS: torch not available")
+        return
+    try:
+        silero_model, _ = torch.hub.load(
+            repo_or_dir='snakers4/silero-models',
+            model='silero_tts', language='ru', speaker='v4_ru'
+        )
+        logger.info(f"Silero TTS loaded! Voices: {silero_model.speakers}")
+    except Exception as e:
+        logger.error(f"Silero TTS init error: {e}")
+
+init_silero()
+logger.info(f"Silero TTS: {'loaded' if silero_model else 'NOT available (pip install torch numpy)'}")
 
 # ========== РОТАЦИЯ КЛЮЧЕЙ ==========
 def load_api_keys(prefix: str) -> list[str]:
@@ -69,11 +89,13 @@ def detect_language(text: str) -> str:
     ratio = cyrillic / len(letters)
     return "ru" if ratio > 0.3 else "en"
 
-# ========== EDGE TTS ГОЛОСА ==========
-EDGE_VOICES = {
-    "ru-RU-DariyaNeural": "Дарья (жен, тёплый)",
-    "ru-RU-SvetlanaNeural": "Светлана (жен, чёткий)",
-    "ru-RU-DmitryNeural": "Дмитрий (муж)",
+# ========== SILERO TTS ГОЛОСА ==========
+SILERO_VOICES = {
+    "silero-xenia": "Ксения (жен, чёткий)",
+    "silero-baya": "Бая (жен, мягкий)",
+    "silero-kseniya": "Ксения-2 (жен)",
+    "silero-aidar": "Айдар (муж)",
+    "silero-eugene": "Евгений (муж)",
 }
 
 KOKORO_VOICES = {
@@ -138,23 +160,42 @@ Output ONLY the text to be read."""
 
 # ========== TTS ДВИЖКИ ==========
 
-async def tts_edge(text: str, voice: str = "ru-RU-DariyaNeural") -> bytes | None:
-    """Озвучить текст через Edge TTS (Microsoft)"""
-    if not EDGE_TTS_AVAILABLE:
-        logger.error("Edge TTS not installed")
+def wav_to_mp3_raw(wav_data: bytes) -> bytes:
+    """Простая обёртка WAV — возвращает как есть (MP3 конвертация опциональна)"""
+    return wav_data
+
+def tensor_to_wav(audio_tensor, sample_rate: int = 48000) -> bytes:
+    """Конвертирует torch tensor в WAV bytes"""
+    audio_np = audio_tensor.numpy()
+    audio_int16 = (audio_np * 32767).astype(np.int16)
+    # WAV header
+    num_samples = len(audio_int16)
+    data_size = num_samples * 2  # 16-bit = 2 bytes per sample
+    header = struct.pack('<4sI4s4sIHHIIHH4sI',
+        b'RIFF', 36 + data_size, b'WAVE',
+        b'fmt ', 16, 1, 1, sample_rate, sample_rate * 2, 2, 16,
+        b'data', data_size
+    )
+    return header + audio_int16.tobytes()
+
+async def tts_silero(text: str, voice: str = "xenia") -> bytes | None:
+    """Озвучить текст через Silero TTS (локальная модель)"""
+    if silero_model is None:
+        logger.error("Silero TTS not loaded")
         return None
+    # Извлечь имя speaker из voice id (silero-xenia → xenia)
+    speaker = voice.replace("silero-", "") if voice.startswith("silero-") else voice
+    if speaker not in silero_model.speakers:
+        speaker = "xenia"  # дефолтный русский голос
     try:
-        communicate = edge_tts.Communicate(text, voice)
-        tmp_path = os.path.join(AUDIO_OUTPUT_PATH, f"_edge_tmp_{uuid.uuid4().hex}.mp3")
-        await communicate.save(tmp_path)
-        with open(tmp_path, "rb") as f:
-            audio = f.read()
-        os.remove(tmp_path)
-        if len(audio) > 0:
-            logger.info(f"Edge TTS OK: {len(audio)} bytes, voice={voice}")
-            return audio
+        audio = silero_model.apply_tts(
+            text=text, speaker=speaker, sample_rate=48000
+        )
+        wav_bytes = tensor_to_wav(audio, 48000)
+        logger.info(f"Silero TTS OK: {len(wav_bytes)} bytes, speaker={speaker}")
+        return wav_bytes
     except Exception as e:
-        logger.error(f"Edge TTS error: {e}")
+        logger.error(f"Silero TTS error: {e}")
     return None
 
 async def tts_kokoro(text: str, voice: str = "af_heart") -> bytes | None:
@@ -174,33 +215,32 @@ async def tts_kokoro(text: str, voice: str = "af_heart") -> bytes | None:
         logger.error(f"Kokoro TTS error: {e}")
     return None
 
-def is_edge_voice(voice: str) -> bool:
-    """Проверяет, является ли голос Edge TTS голосом"""
-    return voice.startswith("ru-") or voice.startswith("en-") or "Neural" in voice
+def is_silero_voice(voice: str) -> bool:
+    """Проверяет, является ли голос Silero TTS голосом"""
+    return voice.startswith("silero-")
 
 async def tts_chunk(text: str, chunk_idx: int, voice: str = "af_heart") -> bytes | None:
     """Универсальный TTS: выбирает движок по голосу и языку"""
     lang = detect_language(text)
 
-    # Если выбран Edge-голос — используем Edge
-    if is_edge_voice(voice):
-        logger.info(f"  Chunk {chunk_idx}: Edge TTS ({voice}, {len(text)} chars)")
-        audio = await tts_edge(text, voice)
+    # Если выбран Silero-голос — используем Silero
+    if is_silero_voice(voice):
+        logger.info(f"  Chunk {chunk_idx}: Silero TTS ({voice}, {len(text)} chars)")
+        audio = await tts_silero(text, voice)
         if audio:
             return audio
-        # Фоллбэк на Kokoro если Edge упал
-        logger.warning(f"  Chunk {chunk_idx}: Edge failed, trying Kokoro")
+        logger.warning(f"  Chunk {chunk_idx}: Silero failed, trying Kokoro")
         return await tts_kokoro(text, "af_heart")
 
-    # Если выбран Kokoro-голос
-    if lang == "ru" and EDGE_TTS_AVAILABLE:
-        # Русский текст + Kokoro-голос → принудительно Edge (Kokoro не понимает русский)
-        logger.info(f"  Chunk {chunk_idx}: Russian text → Edge TTS (ru-RU-DariyaNeural, {len(text)} chars)")
-        audio = await tts_edge(text, "ru-RU-DariyaNeural")
+    # Если выбран Kokoro-голос но текст русский
+    if lang == "ru" and silero_model is not None:
+        # Русский текст + Kokoro-голос → принудительно Silero (Kokoro не понимает русский)
+        logger.info(f"  Chunk {chunk_idx}: Russian text → Silero TTS (xenia, {len(text)} chars)")
+        audio = await tts_silero(text, "xenia")
         if audio:
             return audio
 
-    # Английский текст или Edge недоступен → Kokoro
+    # Английский текст или Silero недоступен → Kokoro
     logger.info(f"  Chunk {chunk_idx}: Kokoro ({voice}, {len(text)} chars)")
     return await tts_kokoro(text, voice)
 
