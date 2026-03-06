@@ -15,11 +15,10 @@ services:
       - GEMINI_API_KEY_2=${GEMINI_API_KEY_2}
       - GEMINI_API_KEY_3=${GEMINI_API_KEY_3}
       - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
-      - TORCH_HOME=/tmp/torch_cache
+      - SALUTE_SPEECH_KEY=${SALUTE_SPEECH_KEY}
       - http_proxy=http://host.docker.internal:10808
       - https_proxy=http://host.docker.internal:10808
-      - no_proxy=localhost,127.0.0.1,ai-router,tts-kokoro,tts-fish,tts-sovits,ai-audio-host,generativelanguage.googleapis.com,api.siliconflow.com
-
+      - no_proxy=localhost,127.0.0.1,ai-router,tts-kokoro,tts-chatterbox,tts-sovits,ai-audio-host,generativelanguage.googleapis.com,api.siliconflow.com,ngw.devices.sberbank.ru,smartspeech.sber.ru
     volumes:
       - ../routing:/app/routing
       - ./antigravity.json:/app/deploy/antigravity.json
@@ -56,6 +55,7 @@ services:
     networks:
       - ai-net
 
+  # Fish Speech removed — replaced by Silero TTS (integrated into router)
 
   # ========== GPT-SoVITS: Клонирование голоса ==========
   tts-sovits:
@@ -80,6 +80,33 @@ services:
           memory: 12G
     networks:
       - ai-net
+
+  # ========== Chatterbox: Premium English TTS ==========
+  tts-chatterbox:
+    build:
+      context: ../chatterbox-tts-api
+      dockerfile: docker/Dockerfile.cpu
+    container_name: tts-chatterbox
+    restart: unless-stopped
+    environment:
+      - DEVICE=cpu
+      - PORT=4123
+      - HOST=0.0.0.0
+      - EXAGGERATION=0.5
+      - CFG_WEIGHT=0.5
+      - TEMPERATURE=0.8
+      - MAX_CHUNK_LENGTH=280
+      - MAX_TOTAL_LENGTH=3000
+    volumes:
+      - chatterbox-models:/cache
+    deploy:
+      resources:
+        limits:
+          cpus: '14'
+          memory: 8G
+    networks:
+      - ai-net
+
 
   audio-server:
     image: nginx:alpine
@@ -113,6 +140,7 @@ networks:
     driver: bridge
 
 volumes:
+  chatterbox-models:
   webui_data:
   qdrant_data:
   pg_data:

@@ -1,18 +1,10 @@
-<!DOCTYPE html>
-<html lang="ru">
-
-<head>
+<html lang="ru"><head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audiobook Generator</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
             background: #0a0a0f;
@@ -22,293 +14,98 @@
             align-items: center;
             justify-content: center;
         }
-
-        .container {
-            width: 100%;
-            max-width: 560px;
-            padding: 20px;
-        }
-
+        .container { width: 100%; max-width: 560px; padding: 20px; }
         h1 {
-            font-size: 1.8rem;
-            font-weight: 700;
-            text-align: center;
-            margin-bottom: 8px;
+            font-size: 1.8rem; font-weight: 700; text-align: center; margin-bottom: 8px;
             background: linear-gradient(135deg, #a78bfa, #60a5fa, #34d399);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
+        .subtitle { text-align: center; color: #666; font-size: 0.85rem; margin-bottom: 32px; }
 
-        .subtitle {
-            text-align: center;
-            color: #666;
-            font-size: 0.85rem;
-            margin-bottom: 32px;
-        }
-
-        /* Drop Zone */
         .drop-zone {
-            border: 2px dashed #333;
-            border-radius: 16px;
-            padding: 48px 24px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            background: rgba(255, 255, 255, 0.02);
-            position: relative;
+            border: 2px dashed #333; border-radius: 16px; padding: 48px 24px;
+            text-align: center; cursor: pointer; transition: all 0.3s ease;
+            background: rgba(255,255,255,0.02); position: relative;
         }
+        .drop-zone:hover, .drop-zone.dragover { border-color: #a78bfa; background: rgba(167,139,250,0.05); }
+        .drop-zone.has-file { border-color: #34d399; background: rgba(52,211,153,0.05); }
+        .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+        .drop-icon { font-size: 2.5rem; margin-bottom: 12px; }
+        .drop-text { font-size: 0.95rem; color: #888; }
+        .drop-text strong { color: #a78bfa; }
+        .file-info { margin-top: 12px; font-size: 0.85rem; color: #34d399; font-weight: 500; }
 
-        .drop-zone:hover,
-        .drop-zone.dragover {
-            border-color: #a78bfa;
-            background: rgba(167, 139, 250, 0.05);
-        }
-
-        .drop-zone.has-file {
-            border-color: #34d399;
-            background: rgba(52, 211, 153, 0.05);
-        }
-
-        .drop-zone input[type="file"] {
-            position: absolute;
-            inset: 0;
-            opacity: 0;
-            cursor: pointer;
-        }
-
-        .drop-icon {
-            font-size: 2.5rem;
-            margin-bottom: 12px;
-        }
-
-        .drop-text {
-            font-size: 0.95rem;
-            color: #888;
-        }
-
-        .drop-text strong {
-            color: #a78bfa;
-        }
-
-        .file-info {
-            margin-top: 12px;
-            font-size: 0.85rem;
-            color: #34d399;
-            font-weight: 500;
-        }
-
-        /* Voice Select */
-        .settings {
-            margin-top: 20px;
-            display: flex;
-            gap: 12px;
-            align-items: center;
-        }
-
-        .settings label {
-            font-size: 0.85rem;
-            color: #888;
-            white-space: nowrap;
-        }
-
+        .settings { margin-top: 20px; display: flex; gap: 12px; align-items: center; }
+        .settings label { font-size: 0.85rem; color: #888; white-space: nowrap; }
         .settings select {
-            flex: 1;
-            background: #161620;
-            border: 1px solid #2a2a3a;
-            color: #e0e0e0;
-            padding: 10px 14px;
-            border-radius: 10px;
-            font-family: inherit;
-            font-size: 0.85rem;
-            outline: none;
-            cursor: pointer;
+            flex: 1; background: #161620; border: 1px solid #2a2a3a;
+            color: #e0e0e0; padding: 10px 14px; border-radius: 10px;
+            font-family: inherit; font-size: 0.85rem; outline: none; cursor: pointer;
         }
+        .settings select:focus { border-color: #a78bfa; }
+        .settings select optgroup { color: #a78bfa; font-style: normal; background: #161620; }
+        .settings select option { color: #e0e0e0; background: #161620; padding: 4px; }
 
-        .settings select:focus {
-            border-color: #a78bfa;
-        }
-
-        /* Button */
         .btn {
-            width: 100%;
-            margin-top: 20px;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            font-family: inherit;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
+            width: 100%; margin-top: 20px; padding: 14px; border: none; border-radius: 12px;
+            font-family: inherit; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s ease;
         }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #7c3aed, #3b82f6);
-            color: white;
-        }
-
-        .btn-primary:hover:not(:disabled) {
-            transform: translateY(-1px);
-            box-shadow: 0 8px 24px rgba(124, 58, 237, 0.3);
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
+        .btn-primary { background: linear-gradient(135deg, #7c3aed, #3b82f6); color: white; }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(124,58,237,0.3); }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn-download {
-            background: linear-gradient(135deg, #059669, #34d399);
-            color: white;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            text-decoration: none;
+            background: linear-gradient(135deg, #059669, #34d399); color: white;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none;
         }
+        .btn-download:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(5,150,105,0.3); }
 
-        .btn-download:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 8px 24px rgba(5, 150, 105, 0.3);
+        .btn-preview {
+            background: #2a2a3a; border: 1px solid #3a3a4a; color: #a78bfa;
+            width: 40px; height: 40px; border-radius: 10px; cursor: pointer;
+            font-size: 1rem; transition: all 0.2s;
         }
+        .btn-preview:hover { background: #3a3a4a; transform: scale(1.05); }
 
-        /* Progress */
-        .progress-section {
-            margin-top: 24px;
-            display: none;
-        }
-
-        .progress-section.visible {
-            display: block;
-        }
-
-        .progress-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 0.85rem;
-        }
-
-        .progress-status {
-            color: #a78bfa;
-            font-weight: 500;
-        }
-
-        .progress-percent {
-            color: #888;
-        }
-
-        .progress-bar {
-            width: 100%;
-            height: 8px;
-            background: #1a1a2a;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-
+        .progress-section { margin-top: 24px; display: none; }
+        .progress-section.visible { display: block; }
+        .progress-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.85rem; }
+        .progress-status { color: #a78bfa; font-weight: 500; }
+        .progress-percent { color: #888; }
+        .progress-bar { width: 100%; height: 8px; background: #1a1a2a; border-radius: 4px; overflow: hidden; }
         .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #7c3aed, #3b82f6, #34d399);
-            border-radius: 4px;
-            transition: width 0.5s ease;
-            width: 0%;
+            height: 100%; background: linear-gradient(90deg, #7c3aed, #3b82f6, #34d399);
+            border-radius: 4px; transition: width 0.5s ease; width: 0%;
         }
+        .progress-details { margin-top: 12px; font-size: 0.8rem; color: #666; }
 
-        .progress-details {
-            margin-top: 12px;
-            font-size: 0.8rem;
-            color: #666;
-        }
-
-        /* Result */
         .result {
-            margin-top: 24px;
-            padding: 20px;
-            background: rgba(52, 211, 153, 0.08);
-            border: 1px solid rgba(52, 211, 153, 0.2);
-            border-radius: 12px;
-            display: none;
+            margin-top: 24px; padding: 20px; background: rgba(52,211,153,0.08);
+            border: 1px solid rgba(52,211,153,0.2); border-radius: 12px; display: none;
         }
+        .result.visible { display: block; }
+        .result h3 { color: #34d399; font-size: 1rem; margin-bottom: 12px; }
+        .result-info { font-size: 0.85rem; color: #888; margin-bottom: 16px; }
+        .result-info span { color: #e0e0e0; }
 
-        .result.visible {
-            display: block;
-        }
-
-        .result h3 {
-            color: #34d399;
-            font-size: 1rem;
-            margin-bottom: 12px;
-        }
-
-        .result-info {
-            font-size: 0.85rem;
-            color: #888;
-            margin-bottom: 16px;
-        }
-
-        .result-info span {
-            color: #e0e0e0;
-        }
-
-        /* Error */
         .error {
-            margin-top: 16px;
-            padding: 14px;
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-            border-radius: 10px;
-            color: #f87171;
-            font-size: 0.85rem;
-            display: none;
+            margin-top: 16px; padding: 14px; background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.2); border-radius: 10px;
+            color: #f87171; font-size: 0.85rem; display: none;
         }
+        .error.visible { display: block; }
 
-        .error.visible {
-            display: block;
-        }
-
-        /* Jobs List */
-        .jobs-section {
-            margin-top: 32px;
-            border-top: 1px solid #1a1a2a;
-            padding-top: 20px;
-        }
-
-        .jobs-title {
-            font-size: 0.85rem;
-            color: #666;
-            margin-bottom: 12px;
-        }
-
+        .jobs-section { margin-top: 32px; border-top: 1px solid #1a1a2a; padding-top: 20px; }
+        .jobs-title { font-size: 0.85rem; color: #666; margin-bottom: 12px; }
         .job-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 14px;
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 8px;
-            margin-bottom: 6px;
-            font-size: 0.8rem;
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 14px; background: rgba(255,255,255,0.02);
+            border-radius: 8px; margin-bottom: 6px; font-size: 0.8rem;
         }
-
-        .job-name {
-            color: #ccc;
-        }
-
-        .job-status {
-            font-weight: 500;
-        }
-
-        .job-status.done {
-            color: #34d399;
-        }
-
-        .job-status.processing {
-            color: #60a5fa;
-        }
-
-        .job-status.failed {
-            color: #f87171;
-        }
+        .job-name { color: #ccc; }
+        .job-status { font-weight: 500; }
+        .job-status.done { color: #34d399; }
+        .job-status.processing { color: #60a5fa; }
+        .job-status.failed { color: #f87171; }
     </style>
 </head>
 
@@ -326,29 +123,9 @@
 
         <div class="settings">
             <label>Голос:</label>
-            <select id="voiceSelect">
-                <option value="af_heart">af_heart — загрузка...</option>
-            </select>
+            <select id="voiceSelect"></select>
             <button class="btn-preview" id="previewBtn" onclick="previewVoice()" title="Прослушать">▶</button>
         </div>
-        <style>
-            .btn-preview {
-                background: #2a2a3a;
-                border: 1px solid #3a3a4a;
-                color: #a78bfa;
-                width: 40px;
-                height: 40px;
-                border-radius: 10px;
-                cursor: pointer;
-                font-size: 1rem;
-                transition: all 0.2s;
-            }
-
-            .btn-preview:hover {
-                background: #3a3a4a;
-                transform: scale(1.05);
-            }
-        </style>
 
         <button class="btn btn-primary" id="startBtn" disabled onclick="startJob()">
             Создать аудиокнигу
@@ -370,9 +147,7 @@
         <div class="result" id="resultSection">
             <h3>✅ Готово!</h3>
             <div class="result-info" id="resultInfo"></div>
-            <a class="btn btn-download" id="downloadBtn" href="#" target="_blank">
-                ⬇ Скачать MP3
-            </a>
+            <a class="btn btn-download" id="downloadBtn" href="#" target="_blank">⬇ Скачать MP3</a>
         </div>
 
         <div class="jobs-section" id="jobsSection" style="display:none">
@@ -387,41 +162,186 @@
         let currentJobId = null;
         let pollTimer = null;
 
-        // Drop zone
+        // ========== VOICE CATALOG ==========
+        // Format: id -> { label, engine, quality (1-10), lang }
+        const VOICE_CATALOG = {
+            // === AUTO ===
+            'auto': { label: '🎯 Авто (определит язык)', engine: 'auto', quality: 0, lang: 'auto' },
+
+            // === SaluteSpeech (Sber Cloud) — RU ===
+            'salute-may':  { label: 'Марфа — тёплый жен.',  engine: 'SaluteSpeech', quality: 8, lang: 'RU' },
+            'salute-nec':  { label: 'Наталья — чёткий жен.', engine: 'SaluteSpeech', quality: 7, lang: 'RU' },
+            'salute-ost':  { label: 'Александра — нейтр. жен.', engine: 'SaluteSpeech', quality: 7, lang: 'RU' },
+            'salute-kin':  { label: 'Кира — яркий жен.',     engine: 'SaluteSpeech', quality: 7, lang: 'RU' },
+            'salute-pon':  { label: 'Сергей — дружел. муж.', engine: 'SaluteSpeech', quality: 7, lang: 'RU' },
+            'salute-bys':  { label: 'Борис — уверен. муж.',  engine: 'SaluteSpeech', quality: 7, lang: 'RU' },
+            'salute-tur':  { label: 'Тур — глубокий муж.',   engine: 'SaluteSpeech', quality: 7, lang: 'RU' },
+
+            // === Silero v5 (Local CPU) — RU ===
+            'silero-xenia':   { label: 'Ксения — чёткий жен.',  engine: 'Silero v5', quality: 5, lang: 'RU' },
+            'silero-baya':    { label: 'Бая — мягкий жен.',      engine: 'Silero v5', quality: 5, lang: 'RU' },
+            'silero-kseniya': { label: 'Ксения-2 — жен.',        engine: 'Silero v5', quality: 5, lang: 'RU' },
+            'silero-aidar':   { label: 'Айдар — муж.',           engine: 'Silero v5', quality: 5, lang: 'RU' },
+            'silero-eugene':  { label: 'Евгений — муж.',         engine: 'Silero v5', quality: 5, lang: 'RU' },
+
+            // === Kokoro (Local CPU) — EN ===
+            'af_heart':    { label: 'Heart — мягкий жен.',    engine: 'Kokoro', quality: 8, lang: 'EN' },
+            'af_bella':    { label: 'Bella — яркий жен.',     engine: 'Kokoro', quality: 7, lang: 'EN' },
+            'af_sky':      { label: 'Sky — лёгкий жен.',      engine: 'Kokoro', quality: 7, lang: 'EN' },
+            'af_nicole':   { label: 'Nicole — жен.',           engine: 'Kokoro', quality: 7, lang: 'EN' },
+            'af_sarah':    { label: 'Sarah — жен.',            engine: 'Kokoro', quality: 7, lang: 'EN' },
+            'af_alloy':    { label: 'Alloy — жен.',            engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'af_aoede':    { label: 'Aoede — жен.',            engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'af_jessica':  { label: 'Jessica — жен.',          engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'af_kore':     { label: 'Kore — жен.',             engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'af_nova':     { label: 'Nova — жен.',             engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'af_river':    { label: 'River — жен.',            engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'am_adam':     { label: 'Adam — муж.',             engine: 'Kokoro', quality: 8, lang: 'EN' },
+            'am_michael':  { label: 'Michael — муж.',          engine: 'Kokoro', quality: 7, lang: 'EN' },
+            'am_echo':     { label: 'Echo — муж.',             engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'am_eric':     { label: 'Eric — муж.',             engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'am_liam':     { label: 'Liam — муж.',             engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'am_onyx':     { label: 'Onyx — муж.',             engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'am_puck':     { label: 'Puck — муж.',             engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'bf_emma':     { label: 'Emma — жен. British',     engine: 'Kokoro', quality: 7, lang: 'EN' },
+            'bf_alice':    { label: 'Alice — жен. British',    engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'bf_lily':     { label: 'Lily — жен. British',     engine: 'Kokoro', quality: 6, lang: 'EN' },
+            'bm_george':   { label: 'George — муж. British',   engine: 'Kokoro', quality: 7, lang: 'EN' },
+            'bm_lewis':    { label: 'Lewis — муж. British',    engine: 'Kokoro', quality: 7, lang: 'EN' },
+            'bm_daniel':   { label: 'Daniel — муж. British',   engine: 'Kokoro', quality: 6, lang: 'EN' },
+        };
+
+        function formatVoiceLabel(id, info) {
+            if (id === 'auto') return info.label;
+            const stars = info.quality >= 8 ? '★' : info.quality >= 6 ? '☆' : '·';
+            return `${info.label} [${info.engine}] ${stars}${info.quality}/10 ${info.lang}`;
+        }
+
+        // ========== DROP ZONE ==========
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const fileInfo = document.getElementById('fileInfo');
         const startBtn = document.getElementById('startBtn');
 
-        ['dragenter', 'dragover'].forEach(e =>
+        ['dragenter','dragover'].forEach(e =>
             dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('dragover'); })
         );
-        ['dragleave', 'drop'].forEach(e =>
+        ['dragleave','drop'].forEach(e =>
             dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('dragover'); })
         );
-
-        dropZone.addEventListener('drop', e => {
-            const file = e.dataTransfer.files[0];
-            if (file) selectFile(file);
-        });
-
-        fileInput.addEventListener('change', e => {
-            if (e.target.files[0]) selectFile(e.target.files[0]);
-        });
+        dropZone.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) selectFile(f); });
+        fileInput.addEventListener('change', e => { if (e.target.files[0]) selectFile(e.target.files[0]); });
 
         function selectFile(file) {
             selectedFile = file;
-            const sizeKB = (file.size / 1024).toFixed(1);
-            fileInfo.textContent = `${file.name} (${sizeKB} КБ)`;
+            fileInfo.textContent = `${file.name} (${(file.size/1024).toFixed(1)} КБ)`;
             dropZone.classList.add('has-file');
             startBtn.disabled = false;
             hideError();
         }
 
-        // Start job
+        // ========== VOICE LOADING ==========
+        async function loadVoices() {
+            const select = document.getElementById('voiceSelect');
+            let apiVoices = {};
+
+            try {
+                const resp = await fetch(`${ROUTER_URL}/v1/audio/voices`);
+                const data = await resp.json();
+                apiVoices = data.voices || {};
+            } catch (e) {
+                console.log('Could not load voices from API, using catalog');
+            }
+
+            // Merge API voices with catalog
+            const allVoiceIds = new Set([...Object.keys(apiVoices), ...Object.keys(VOICE_CATALOG)]);
+
+            // Group voices by engine
+            const groups = {
+                'auto': [],
+                'SaluteSpeech': [],
+                'Silero v5': [],
+                'Kokoro': [],
+                'other': []
+            };
+
+            for (const id of allVoiceIds) {
+                const catalogInfo = VOICE_CATALOG[id];
+                const apiInfo = apiVoices[id];
+
+                if (id === 'auto') {
+                    groups['auto'].push({ id, info: catalogInfo || { label: 'Auto', engine: 'auto', quality: 0, lang: 'auto' } });
+                    continue;
+                }
+
+                let info;
+                if (catalogInfo) {
+                    info = catalogInfo;
+                } else if (apiInfo) {
+                    const engine = apiInfo.engine === 'salutespeech' ? 'SaluteSpeech' :
+                                   apiInfo.engine === 'silero' ? 'Silero v5' :
+                                   apiInfo.engine === 'kokoro' ? 'Kokoro' : apiInfo.engine;
+                    const lang = apiInfo.lang === 'ru' ? 'RU' : 'EN';
+                    info = { label: apiInfo.label || id, engine, quality: 6, lang };
+                } else continue;
+
+                const groupKey = info.engine === 'SaluteSpeech' ? 'SaluteSpeech' :
+                                 info.engine === 'Silero v5' ? 'Silero v5' :
+                                 info.engine === 'Kokoro' ? 'Kokoro' : 'other';
+                groups[groupKey].push({ id, info });
+            }
+
+            // Build select options
+            let html = '';
+
+            // Auto first
+            if (groups['auto'].length) {
+                const v = groups['auto'][0];
+                html += `<option value="${v.id}" selected>${formatVoiceLabel(v.id, v.info)}</option>`;
+            }
+
+            // SaluteSpeech
+            if (groups['SaluteSpeech'].length) {
+                html += '<optgroup label="🇷🇺 SaluteSpeech (Sber Cloud) — RU">';
+                for (const v of groups['SaluteSpeech']) {
+                    html += `<option value="${v.id}">${formatVoiceLabel(v.id, v.info)}</option>`;
+                }
+                html += '</optgroup>';
+            }
+
+            // Silero
+            if (groups['Silero v5'].length) {
+                html += '<optgroup label="🇷🇺 Silero v5 (Local) — RU">';
+                for (const v of groups['Silero v5']) {
+                    html += `<option value="${v.id}">${formatVoiceLabel(v.id, v.info)}</option>`;
+                }
+                html += '</optgroup>';
+            }
+
+            // Kokoro
+            if (groups['Kokoro'].length) {
+                html += '<optgroup label="🇬🇧 Kokoro (Local) — EN">';
+                for (const v of groups['Kokoro']) {
+                    html += `<option value="${v.id}">${formatVoiceLabel(v.id, v.info)}</option>`;
+                }
+                html += '</optgroup>';
+            }
+
+            // Other
+            if (groups['other'].length) {
+                html += '<optgroup label="Другие">';
+                for (const v of groups['other']) {
+                    html += `<option value="${v.id}">${formatVoiceLabel(v.id, v.info)}</option>`;
+                }
+                html += '</optgroup>';
+            }
+
+            select.innerHTML = html;
+        }
+
+        // ========== START JOB ==========
         async function startJob() {
             if (!selectedFile) return;
-
             startBtn.disabled = true;
             startBtn.textContent = 'Загрузка...';
             hideError();
@@ -431,26 +351,15 @@
             formData.append('voice', document.getElementById('voiceSelect').value);
 
             try {
-                const resp = await fetch(`${ROUTER_URL}/v1/audio/book`, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!resp.ok) {
-                    const err = await resp.json();
-                    throw new Error(err.detail || 'Upload failed');
-                }
-
+                const resp = await fetch(`${ROUTER_URL}/v1/audio/book`, { method: 'POST', body: formData });
+                if (!resp.ok) { const err = await resp.json(); throw new Error(err.detail || 'Upload failed'); }
                 const data = await resp.json();
                 currentJobId = data.job_id;
 
-                // Show progress
                 document.getElementById('progressSection').classList.add('visible');
                 document.getElementById('resultSection').classList.remove('visible');
-
                 startBtn.textContent = 'Генерация...';
                 pollProgress();
-
             } catch (e) {
                 showError(e.message);
                 startBtn.disabled = false;
@@ -458,10 +367,9 @@
             }
         }
 
-        // Poll progress
+        // ========== POLL PROGRESS ==========
         async function pollProgress() {
             if (!currentJobId) return;
-
             try {
                 const resp = await fetch(`${ROUTER_URL}/v1/audio/book/${currentJobId}`);
                 const data = await resp.json();
@@ -482,22 +390,15 @@
                     status.textContent = 'Готово!';
                     fill.style.width = '100%';
                     percent.textContent = '100%';
-
-                    // Show result
                     const result = document.getElementById('resultSection');
                     result.classList.add('visible');
-
                     document.getElementById('resultInfo').innerHTML =
-                        `Размер: <span>${data.size_mb} МБ</span> · ` +
-                        `Чанков: <span>${data.chunks_ok}/${data.total_chunks}</span>`;
-
+                        `Размер: <span>${data.size_mb} МБ</span> · Чанков: <span>${data.chunks_ok}/${data.total_chunks}</span>`;
                     const dlBtn = document.getElementById('downloadBtn');
                     dlBtn.href = data.url;
                     dlBtn.textContent = `⬇ Скачать MP3 (${data.size_mb} МБ)`;
-
                     startBtn.textContent = 'Создать ещё';
                     startBtn.disabled = false;
-
                     loadJobs();
                 } else if (data.status === 'failed') {
                     showError('Ошибка: ' + (data.error || 'Unknown'));
@@ -512,128 +413,55 @@
             }
         }
 
-        // Load previous jobs
+        // ========== PREVIOUS JOBS ==========
         async function loadJobs() {
             try {
                 const resp = await fetch(`${ROUTER_URL}/v1/audio/books`);
                 const data = await resp.json();
-
                 if (data.jobs && data.jobs.length > 0) {
-                    const section = document.getElementById('jobsSection');
-                    section.style.display = 'block';
-
-                    const list = document.getElementById('jobsList');
-                    list.innerHTML = data.jobs.map(j => `
+                    document.getElementById('jobsSection').style.display = 'block';
+                    document.getElementById('jobsList').innerHTML = data.jobs.map(j => `
                         <div class="job-item">
                             <span class="job-name">${j.filename || 'unknown'}</span>
-                            <span class="job-status ${j.status}">${j.status === 'done' ? `<a href="${j.url}" target="_blank" style="color:#34d399">Скачать</a>` :
-                            j.status === 'processing' ? `${j.progress}%` :
-                                j.status
-                        }</span>
+                            <span class="job-status ${j.status}">${
+                                j.status === 'done' ? `<a href="${j.url}" target="_blank" style="color:#34d399">Скачать</a>` :
+                                j.status === 'processing' ? `${j.progress}%` : j.status
+                            }</span>
                         </div>
                     `).join('');
                 }
-            } catch (e) { }
+            } catch (e) {}
         }
 
-        function showError(msg) {
-            const el = document.getElementById('errorMsg');
-            el.textContent = msg;
-            el.classList.add('visible');
-        }
-
-        function hideError() {
-            document.getElementById('errorMsg').classList.remove('visible');
-        }
-
-        // Voice labels
-        const VOICE_LABELS = {
-            'af_heart': 'Heart (жен, мягкий)',
-            'af_bella': 'Bella (жен, яркий)',
-            'af_sky': 'Sky (жен, лёгкий)',
-            'af_nicole': 'Nicole (жен)',
-            'af_sarah': 'Sarah (жен)',
-            'af_alloy': 'Alloy (жен)',
-            'af_aoede': 'Aoede (жен)',
-            'af_jessica': 'Jessica (жен)',
-            'af_kore': 'Kore (жен)',
-            'af_nova': 'Nova (жен)',
-            'af_river': 'River (жен)',
-            'af_shimmer': 'Shimmer (жен)',
-            'am_adam': 'Adam (муж)',
-            'am_michael': 'Michael (муж)',
-            'am_echo': 'Echo (муж)',
-            'am_eric': 'Eric (муж)',
-            'am_fable': 'Fable (муж)',
-            'am_liam': 'Liam (муж)',
-            'am_onyx': 'Onyx (муж)',
-            'bf_emma': 'Emma (жен, британ)',
-            'bf_isabella': 'Isabella (жен, британ)',
-            'bf_alice': 'Alice (жен, британ)',
-            'bf_lily': 'Lily (жен, британ)',
-            'bm_george': 'George (муж, британ)',
-            'bm_lewis': 'Lewis (муж, британ)',
-            'bm_daniel': 'Daniel (муж, британ)',
-        };
-
-        // Load voices from API
-        async function loadVoices() {
-            const select = document.getElementById('voiceSelect');
-            try {
-                const resp = await fetch(`${ROUTER_URL}/v1/audio/voices`);
-                const data = await resp.json();
-                const voices = data.voices || data;
-
-                // Handle both array of strings and array of objects
-                let voiceList = [];
-                if (Array.isArray(voices)) {
-                    voiceList = voices.map(v => typeof v === 'string' ? v : v.id || v.name);
-                } else if (typeof voices === 'object') {
-                    voiceList = Object.keys(voices);
-                }
-
-                if (voiceList.length > 0) {
-                    select.innerHTML = voiceList.map(v => {
-                        const label = VOICE_LABELS[v] || v;
-                        return `<option value="${v}">${v} — ${label}</option>`;
-                    }).join('');
-                }
-            } catch (e) {
-                console.log('Could not load voices, using defaults');
-                select.innerHTML = Object.entries(VOICE_LABELS).map(([k, v]) =>
-                    `<option value="${k}">${k} — ${v}</option>`
-                ).join('');
-            }
-        }
-
-        // Preview voice
+        // ========== PREVIEW ==========
         async function previewVoice() {
             const voice = document.getElementById('voiceSelect').value;
             const btn = document.getElementById('previewBtn');
             btn.textContent = '⏳';
             btn.disabled = true;
 
+            // Use Russian preview for RU voices, English for EN
+            const info = VOICE_CATALOG[voice];
+            const isRu = info && info.lang === 'RU';
+            const previewText = isRu
+                ? 'Привет! Это пример звучания выбранного голоса.'
+                : 'This is a preview of the selected voice. How does it sound?';
+
             try {
-                const resp = await fetch(`${ROUTER_URL}/v1/audio/book`, {
-                    method: 'POST',
-                    body: (() => {
-                        const fd = new FormData();
-                        const blob = new Blob(['This is a preview of the selected voice. How does it sound?'], { type: 'text/plain' });
-                        fd.append('file', blob, 'preview.txt');
-                        fd.append('voice', voice);
-                        return fd;
-                    })()
-                });
+                const fd = new FormData();
+                const blob = new Blob([previewText], { type: 'text/plain' });
+                fd.append('file', blob, 'preview.txt');
+                fd.append('voice', voice);
+                const resp = await fetch(`${ROUTER_URL}/v1/audio/book`, { method: 'POST', body: fd });
                 const data = await resp.json();
-                // Poll until done
+
                 const checkDone = async () => {
                     const sr = await fetch(`${ROUTER_URL}/v1/audio/book/${data.job_id}`);
                     const sd = await sr.json();
                     if (sd.status === 'done') {
                         const audio = new Audio(sd.url);
                         audio.play();
-                        btn.textContent = '▶';
-                        btn.disabled = false;
+                        btn.textContent = '▶'; btn.disabled = false;
                     } else if (sd.status === 'failed') {
                         btn.textContent = '❌';
                         setTimeout(() => { btn.textContent = '▶'; btn.disabled = false; }, 2000);
@@ -648,11 +476,13 @@
             }
         }
 
-        // Load on page init
+        function showError(msg) { const el = document.getElementById('errorMsg'); el.textContent = msg; el.classList.add('visible'); }
+        function hideError() { document.getElementById('errorMsg').classList.remove('visible'); }
+
+        // Initialize
         loadVoices();
         loadJobs();
     </script>
-</body>
+</body></html>
 
-</html>
 

@@ -5,7 +5,9 @@ from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from litellm import acompletion
 
-# Silero TTS для русского (локальная модель, CPU)
+# Silero TTS: set cache dir BEFORE importing torch (fix Permission denied)
+os.environ['TORCH_HOME'] = '/tmp/torch_cache'
+
 try:
     import torch
     import numpy as np
@@ -23,7 +25,7 @@ os.makedirs(AUDIO_OUTPUT_PATH, exist_ok=True)
 
 CONFIG_PATH = os.getenv("CONFIG_PATH", "deploy/antigravity.json")
 
-# ========== SILERO TTS МОДЕЛЬ ==========
+# ========== SILERO TTS MODEL ==========
 silero_model = None
 
 def init_silero():
@@ -34,7 +36,7 @@ def init_silero():
     try:
         silero_model, _ = torch.hub.load(
             repo_or_dir='snakers4/silero-models',
-            model='silero_tts', language='ru', speaker='v4_ru'
+            model='silero_tts', language='ru', speaker='v5_ru'
         )
         logger.info(f"Silero TTS loaded! Voices: {silero_model.speakers}")
     except Exception as e:
@@ -43,7 +45,53 @@ def init_silero():
 init_silero()
 logger.info(f"Silero TTS: {'loaded' if silero_model else 'NOT available (pip install torch numpy)'}")
 
-# ========== РОТАЦИЯ КЛЮЧЕЙ ==========
+# ========== SALUTESPEECH TTS (SBER) ==========
+SALUTE_AUTH_KEY = os.getenv("SALUTE_SPEECH_KEY", "")
+SALUTE_TOKEN = {"access_token": "", "expires_at": 0}
+
+async def salute_get_token() -> str:
+    """Get or refresh SaluteSpeech access token (valid 30 min)"""
+    global SALUTE_TOKEN
+    now_ms = int(time.time() * 1000)
+    # Refresh if less than 60 seconds remaining
+    if SALUTE_TOKEN["access_token"] and SALUTE_TOKEN["expires_at"] - now_ms > 60000:
+        return SALUTE_TOKEN["access_token"]
+
+    if not SALUTE_AUTH_KEY:
+        logger.error("SaluteSpeech: SALUTE_SPEECH_KEY not set")
+        return ""
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
+            r = await client.post(
+                "https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Accept": "application/json",
+                    "RqUID": str(uuid.uuid4()),
+                    "Authorization": f"Basic {SALUTE_AUTH_KEY}",
+                },
+                data={"scope": "SALUTE_SPEECH_PERS"},
+            )
+            if r.status_code == 200:
+                data = r.json()
+                SALUTE_TOKEN["access_token"] = data["access_token"]
+                SALUTE_TOKEN["expires_at"] = data["expires_at"]
+                logger.info("SaluteSpeech: token refreshed OK")
+                return data["access_token"]
+            else:
+                logger.error(f"SaluteSpeech token error: {r.status_code} {r.text[:200]}")
+    except Exception as e:
+        logger.error(f"SaluteSpeech token error: {e}")
+    return ""
+
+SALUTE_AVAILABLE = bool(SALUTE_AUTH_KEY)
+if SALUTE_AVAILABLE:
+    logger.info("SaluteSpeech: configured (key found)")
+else:
+    logger.info("SaluteSpeech: NOT configured (set SALUTE_SPEECH_KEY)")
+
+# ========== KEY ROTATION ==========
 def load_api_keys(prefix: str) -> list[str]:
     keys = []
     base = os.getenv(prefix)
@@ -74,45 +122,54 @@ def get_all_keys(env_name: str) -> list[str]:
         return [single] if single else []
     return keys
 
-# ========== ОПРЕДЕЛЕНИЕ ЯЗЫКА ==========
+# ========== LANGUAGE DETECTION ==========
 def has_cyrillic(text: str) -> bool:
-    """Проверяет наличие кириллицы в тексте"""
-    return bool(re.search('[а-яА-ЯёЁ]', text))
+    """Check if text contains Cyrillic characters"""
+    return bool(re.search('[\u0430-\u044f\u0410-\u042f\u0451\u0401]', text))
 
 def detect_language(text: str) -> str:
-    """Определяет язык: ru или en"""
-    # Считаем долю кириллических символов
+    """Detect language: ru or en"""
     letters = [c for c in text if c.isalpha()]
     if not letters:
         return "en"
-    cyrillic = sum(1 for c in letters if re.match('[а-яА-ЯёЁ]', c))
+    cyrillic = sum(1 for c in letters if re.match('[\u0430-\u044f\u0410-\u042f\u0451\u0401]', c))
     ratio = cyrillic / len(letters)
     return "ru" if ratio > 0.3 else "en"
 
-# ========== SILERO TTS ГОЛОСА ==========
+# ========== VOICE DEFINITIONS ==========
+SALUTE_VOICES = {
+    "salute-may": {"label": "Наталья (female, clear)", "model": "Nec_24000"},
+    "salute-bys": {"label": "Борис (male, confident)", "model": "Bys_24000"},
+    "salute-may": {"label": "Марфа (female, warm)", "model": "May_24000"},
+    "salute-tur": {"label": "Тур (male, deep)", "model": "Tur_24000"},
+    "salute-ost": {"label": "Александра (female, neutral)", "model": "Ost_24000"},
+    "salute-pon": {"label": "Сергей (male, friendly)", "model": "Pon_24000"},
+    "salute-kin": {"label": "Кира (female, bright)", "model": "Kin_24000"},
+}
+
 SILERO_VOICES = {
-    "silero-xenia": "Ксения (жен, чёткий)",
-    "silero-baya": "Бая (жен, мягкий)",
-    "silero-kseniya": "Ксения-2 (жен)",
-    "silero-aidar": "Айдар (муж)",
-    "silero-eugene": "Евгений (муж)",
+    "silero-xenia": "Xenia (female, clear)",
+    "silero-baya": "Baya (female, soft)",
+    "silero-kseniya": "Kseniya-2 (female)",
+    "silero-aidar": "Aidar (male)",
+    "silero-eugene": "Eugene (male)",
 }
 
 KOKORO_VOICES = {
-    "af_heart": "Heart (жен, мягкий)",
-    "af_bella": "Bella (жен, яркий)",
-    "af_sky": "Sky (жен, лёгкий)",
-    "af_nicole": "Nicole (жен)",
-    "af_sarah": "Sarah (жен)",
-    "am_adam": "Adam (муж)",
-    "am_michael": "Michael (муж)",
-    "bf_emma": "Emma (жен, британ)",
-    "bf_isabella": "Isabella (жен, британ)",
-    "bm_george": "George (муж, британ)",
-    "bm_lewis": "Lewis (муж, британ)",
+    "af_heart": "Heart (female, soft)",
+    "af_bella": "Bella (female, bright)",
+    "af_sky": "Sky (female, light)",
+    "af_nicole": "Nicole (female)",
+    "af_sarah": "Sarah (female)",
+    "am_adam": "Adam (male)",
+    "am_michael": "Michael (male)",
+    "bf_emma": "Emma (female, British)",
+    "bf_isabella": "Isabella (female, British)",
+    "bm_george": "George (male, British)",
+    "bm_lewis": "Lewis (male, British)",
 }
 
-# ========== ОЧИСТКА ТЕКСТА ДЛЯ TTS ==========
+# ========== TEXT CLEANUP FOR TTS ==========
 def clean_for_tts(text: str) -> str:
     stripped = text.strip()
     if stripped.startswith("```"):
@@ -145,7 +202,7 @@ def clean_for_tts(text: str) -> str:
     logger.info(f"TTS cleanup: {len(text)} -> {len(result)} chars")
     return result
 
-# ========== СИСТЕМНЫЙ ПРОМПТ ДЛЯ ОЗВУЧКИ ==========
+# ========== VOICE SYSTEM PROMPT ==========
 VOICE_SYSTEM_PROMPT = """The user wants you to READ ALOUD the provided text.
 You MUST:
 1. Output ONLY the original text content exactly as written
@@ -158,14 +215,14 @@ If the text is in English - output in English.
 If the text is in Russian - output in Russian.
 Output ONLY the text to be read."""
 
-# ========== TTS ДВИЖКИ ==========
+# ========== TTS ENGINES ==========
 
 def wav_to_mp3_raw(wav_data: bytes) -> bytes:
-    """Простая обёртка WAV — возвращает как есть (MP3 конвертация опциональна)"""
+    """Simple WAV wrapper - returns as is (MP3 conversion optional)"""
     return wav_data
 
 def tensor_to_wav(audio_tensor, sample_rate: int = 48000) -> bytes:
-    """Конвертирует torch tensor в WAV bytes"""
+    """Convert torch tensor to WAV bytes"""
     audio_np = audio_tensor.numpy()
     audio_int16 = (audio_np * 32767).astype(np.int16)
     # WAV header
@@ -178,15 +235,47 @@ def tensor_to_wav(audio_tensor, sample_rate: int = 48000) -> bytes:
     )
     return header + audio_int16.tobytes()
 
+async def tts_salute(text: str, voice: str = "salute-may") -> bytes | None:
+    """Generate speech using SaluteSpeech (Sber Cloud API)"""
+    if not SALUTE_AVAILABLE:
+        return None
+
+    token = await salute_get_token()
+    if not token:
+        return None
+
+    # Get model name from voice id
+    voice_info = SALUTE_VOICES.get(voice)
+    model_name = voice_info["model"] if voice_info else "Nec_24000"
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
+            r = await client.post(
+                f"https://smartspeech.sber.ru/rest/v1/text:synthesize?format=wav16&voice={model_name}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/text",
+                },
+                content=text.encode("utf-8"),
+            )
+            if r.status_code == 200 and len(r.content) > 0:
+                logger.info(f"SaluteSpeech TTS OK: {len(r.content)} bytes, voice={model_name}")
+                return r.content
+            else:
+                logger.error(f"SaluteSpeech TTS error: {r.status_code} {r.text[:200]}")
+    except Exception as e:
+        logger.error(f"SaluteSpeech TTS error: {e}")
+    return None
+
 async def tts_silero(text: str, voice: str = "xenia") -> bytes | None:
-    """Озвучить текст через Silero TTS (локальная модель)"""
+    """Generate speech using Silero TTS (local model, fallback)"""
     if silero_model is None:
         logger.error("Silero TTS not loaded")
         return None
-    # Извлечь имя speaker из voice id (silero-xenia → xenia)
+    # Extract speaker name from voice id (silero-xenia -> xenia)
     speaker = voice.replace("silero-", "") if voice.startswith("silero-") else voice
     if speaker not in silero_model.speakers:
-        speaker = "xenia"  # дефолтный русский голос
+        speaker = "xenia"  # default Russian voice
     try:
         audio = silero_model.apply_tts(
             text=text, speaker=speaker, sample_rate=48000
@@ -199,7 +288,7 @@ async def tts_silero(text: str, voice: str = "xenia") -> bytes | None:
     return None
 
 async def tts_kokoro(text: str, voice: str = "af_heart") -> bytes | None:
-    """Озвучить текст через Kokoro"""
+    """Generate speech using Kokoro"""
     payload = {
         "input": text, "model": "kokoro", "voice": voice,
         "response_format": "mp3", "speed": 1.0, "lang_code": "a"
@@ -215,15 +304,31 @@ async def tts_kokoro(text: str, voice: str = "af_heart") -> bytes | None:
         logger.error(f"Kokoro TTS error: {e}")
     return None
 
+def is_salute_voice(voice: str) -> bool:
+    return voice.startswith("salute-")
+
 def is_silero_voice(voice: str) -> bool:
-    """Проверяет, является ли голос Silero TTS голосом"""
     return voice.startswith("silero-")
 
 async def tts_chunk(text: str, chunk_idx: int, voice: str = "af_heart") -> bytes | None:
-    """Универсальный TTS: выбирает движок по голосу и языку"""
+    """Universal TTS: selects engine by voice and language.
+    Priority for Russian: SaluteSpeech -> Silero -> Kokoro (fallback)
+    """
     lang = detect_language(text)
 
-    # Если выбран Silero-голос — используем Silero
+    # If SaluteSpeech voice explicitly selected
+    if is_salute_voice(voice):
+        logger.info(f"  Chunk {chunk_idx}: SaluteSpeech ({voice}, {len(text)} chars)")
+        audio = await tts_salute(text, voice)
+        if audio:
+            return audio
+        logger.warning(f"  Chunk {chunk_idx}: SaluteSpeech failed, trying Silero")
+        audio = await tts_silero(text, "xenia")
+        if audio:
+            return audio
+        return await tts_kokoro(text, "af_heart")
+
+    # If Silero voice explicitly selected
     if is_silero_voice(voice):
         logger.info(f"  Chunk {chunk_idx}: Silero TTS ({voice}, {len(text)} chars)")
         audio = await tts_silero(text, voice)
@@ -232,23 +337,30 @@ async def tts_chunk(text: str, chunk_idx: int, voice: str = "af_heart") -> bytes
         logger.warning(f"  Chunk {chunk_idx}: Silero failed, trying Kokoro")
         return await tts_kokoro(text, "af_heart")
 
-    # Если выбран Kokoro-голос но текст русский
-    if lang == "ru" and silero_model is not None:
-        # Русский текст + Kokoro-голос → принудительно Silero (Kokoro не понимает русский)
-        logger.info(f"  Chunk {chunk_idx}: Russian text → Silero TTS (xenia, {len(text)} chars)")
-        audio = await tts_silero(text, "xenia")
-        if audio:
-            return audio
+    # Auto: Russian text -> SaluteSpeech (best quality) -> Silero (fallback)
+    if lang == "ru":
+        if SALUTE_AVAILABLE:
+            logger.info(f"  Chunk {chunk_idx}: Russian -> SaluteSpeech (Nec_24000, {len(text)} chars)")
+            audio = await tts_salute(text, "salute-may")
+            if audio:
+                return audio
+            logger.warning(f"  Chunk {chunk_idx}: SaluteSpeech failed, trying Silero")
 
-    # Английский текст или Silero недоступен → Kokoro
+        if silero_model is not None:
+            logger.info(f"  Chunk {chunk_idx}: Russian -> Silero (xenia, {len(text)} chars)")
+            audio = await tts_silero(text, "xenia")
+            if audio:
+                return audio
+
+    # English text or all Russian backends failed -> Kokoro
     logger.info(f"  Chunk {chunk_idx}: Kokoro ({voice}, {len(text)} chars)")
     return await tts_kokoro(text, voice)
 
-# ========== АУДИОКНИГА: ФОНОВЫЕ ЗАДАЧИ ==========
+# ========== AUDIOBOOK: BACKGROUND TASKS ==========
 book_jobs: dict[str, dict] = {}
 
 def split_text_to_chunks(text: str, max_chars: int = 3000) -> list[str]:
-    """Разбивает текст на части, уважая границы абзацев и предложений"""
+    """Split text into chunks respecting paragraph and sentence boundaries"""
     paragraphs = text.split('\n\n')
     chunks = []
     current_chunk = ""
@@ -276,7 +388,7 @@ def split_text_to_chunks(text: str, max_chars: int = 3000) -> list[str]:
     return chunks
 
 async def process_book(job_id: str, text: str, voice: str = "af_heart"):
-    """Фоновая задача: разбить текст → озвучить → склеить"""
+    """Background task: split text -> TTS each chunk -> concatenate"""
     job = book_jobs[job_id]
     try:
         chunks = split_text_to_chunks(text)
@@ -327,7 +439,7 @@ async def process_book(job_id: str, text: str, voice: str = "af_heart"):
         job["error"] = str(e)
         logger.error(f"Book [{job_id[:8]}]: FAILED: {e}")
 
-# ========== КОНФИГ И МОДЕЛИ ==========
+# ========== CONFIG AND MODELS ==========
 def load_config():
     try:
         with open(CONFIG_PATH, "r") as f:
@@ -347,13 +459,13 @@ async def list_models():
     config = load_config()
     return {"object": "list", "data": [{"id": m["model_name"], "object": "model"} for m in config.get("model_list", [])]}
 
-# ========== ЭНДПОИНТ: АУДИОКНИГА ==========
+# ========== ENDPOINT: AUDIOBOOK ==========
 @app.post("/v1/audio/book")
 async def create_audiobook(
     file: UploadFile = File(...),
     voice: str = Form(default="auto")
 ):
-    """Загрузить текстовый файл → получить аудиокнигу"""
+    """Upload text file -> get audiobook"""
     content = await file.read()
 
     for encoding in ["utf-8", "utf-8-sig", "cp1251", "latin-1"]:
@@ -368,10 +480,13 @@ async def create_audiobook(
     if len(text.strip()) < 10:
         raise HTTPException(status_code=400, detail="File too short")
 
-    # Auto-detect: русский текст → Edge TTS, английский → Kokoro
+    # Auto-detect: Russian text -> SaluteSpeech (best), English -> Kokoro
     if voice == "auto":
         lang = detect_language(text)
-        voice = "ru-RU-DariyaNeural" if lang == "ru" else "af_heart"
+        if lang == "ru":
+            voice = "salute-may" if SALUTE_AVAILABLE else "silero-xenia"
+        else:
+            voice = "af_heart"
         logger.info(f"Auto-detected language: {lang}, voice: {voice}")
 
     job_id = uuid.uuid4().hex
@@ -417,10 +532,10 @@ async def list_audiobook_jobs():
 
 @app.get("/v1/audio/voices")
 async def list_voices():
-    """Комбинированный список голосов: Kokoro + Edge TTS"""
+    """Combined voice list: SaluteSpeech + Silero + Kokoro"""
     voices = {}
 
-    # Kokoro голоса
+    # Kokoro voices (English)
     try:
         async with httpx.AsyncClient(timeout=10.0, trust_env=False) as client:
             r = await client.get("http://tts-kokoro:8880/v1/audio/voices")
@@ -435,17 +550,22 @@ async def list_voices():
         for vid, label in KOKORO_VOICES.items():
             voices[vid] = {"id": vid, "label": label, "engine": "kokoro", "lang": "en"}
 
-    # Edge TTS русские голоса
-    if EDGE_TTS_AVAILABLE:
-        for vid, label in EDGE_VOICES.items():
-            voices[vid] = {"id": vid, "label": label, "engine": "edge", "lang": "ru"}
+    # SaluteSpeech Russian voices (primary)
+    if SALUTE_AVAILABLE:
+        for vid, info in SALUTE_VOICES.items():
+            voices[vid] = {"id": vid, "label": info["label"], "engine": "salutespeech", "lang": "ru"}
 
-    # Автовыбор
-    voices["auto"] = {"id": "auto", "label": "Авто (определяет язык)", "engine": "auto", "lang": "auto"}
+    # Silero Russian voices (fallback)
+    if silero_model is not None:
+        for vid, label in SILERO_VOICES.items():
+            voices[vid] = {"id": vid, "label": label, "engine": "silero", "lang": "ru"}
+
+    # Auto selection
+    voices["auto"] = {"id": "auto", "label": "Auto (detect language)", "engine": "auto", "lang": "auto"}
 
     return {"voices": voices}
 
-# ========== TTS ДЛЯ ЧАТА ==========
+# ========== TTS FOR CHAT ==========
 async def generate_audio(text: str) -> str:
     if not text.strip():
         return ""
@@ -456,17 +576,27 @@ async def generate_audio(text: str) -> str:
 
     lang = detect_language(clean_text)
 
-    # Русский → Edge TTS, Английский → Kokoro
-    if lang == "ru" and EDGE_TTS_AVAILABLE:
-        logger.info(f"Chat TTS: Edge (russian, {len(clean_text)} chars)")
-        audio = await tts_edge(clean_text, "ru-RU-DariyaNeural")
-        if audio:
-            fname = f"voice_{uuid.uuid4().hex}.mp3"
-            with open(os.path.join(AUDIO_OUTPUT_PATH, fname), "wb") as f:
-                f.write(audio)
-            return f"{AUDIO_PUBLIC_URL}/{fname}"
+    # Russian -> SaluteSpeech (best) -> Silero (fallback)
+    if lang == "ru":
+        if SALUTE_AVAILABLE:
+            logger.info(f"Chat TTS: SaluteSpeech (russian, {len(clean_text)} chars)")
+            audio = await tts_salute(clean_text, "salute-may")
+            if audio:
+                fname = f"voice_{uuid.uuid4().hex}.wav"
+                with open(os.path.join(AUDIO_OUTPUT_PATH, fname), "wb") as f:
+                    f.write(audio)
+                return f"{AUDIO_PUBLIC_URL}/{fname}"
 
-    # Английский или Edge недоступен → Kokoro
+        if silero_model is not None:
+            logger.info(f"Chat TTS: Silero fallback (russian, {len(clean_text)} chars)")
+            audio = await tts_silero(clean_text, "xenia")
+            if audio:
+                fname = f"voice_{uuid.uuid4().hex}.wav"
+                with open(os.path.join(AUDIO_OUTPUT_PATH, fname), "wb") as f:
+                    f.write(audio)
+                return f"{AUDIO_PUBLIC_URL}/{fname}"
+
+    # English or all Russian backends failed -> Kokoro
     logger.info(f"Chat TTS: Kokoro (english, {len(clean_text)} chars)")
     kokoro_payload = {
         "input": clean_text, "model": "kokoro", "voice": "af_heart",
@@ -486,7 +616,7 @@ async def generate_audio(text: str) -> str:
     logger.error("TTS: all backends failed")
     return ""
 
-# ========== LLM С РОТАЦИЕЙ КЛЮЧЕЙ ==========
+# ========== LLM WITH KEY ROTATION ==========
 async def call_with_key_rotation(mid, messages, api_key_env, api_base, stream):
     keys = get_all_keys(api_key_env)
     if not keys:
@@ -515,12 +645,15 @@ async def call_with_key_rotation(mid, messages, api_key_env, api_base, stream):
                 raise
     raise last_error
 
-# ========== ЧАТ ==========
+# ========== CHAT ==========
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatRequest):
     config = load_config()
     last_msg = str(request.messages[-1].get("content", ""))
-    voice_intent = "озвучь" in last_msg.lower()
+    voice_intent = any(w in last_msg.lower() for w in ["voice", "read aloud", "tts"])
+    # Also check Russian voice command
+    if not voice_intent:
+        voice_intent = "\u043e\u0437\u0432\u0443\u0447\u044c" in last_msg.lower()
     logger.info(f"REQUEST model={request.model} voice={voice_intent} msg={last_msg[:80]}")
 
     def get_params(name):
@@ -554,9 +687,9 @@ async def chat_completions(request: ChatRequest):
                 logger.info(f"Voice preview: {txt[:100]}")
                 url = await generate_audio(txt)
                 if url:
-                    resp.choices[0].message.content += f"\n\n🎧 **Озвучка:** [Скачать аудио]({url})"
+                    resp.choices[0].message.content += f"\n\n\U0001f3a7 **Audio:** [Download audio]({url})"
                 else:
-                    resp.choices[0].message.content += "\n\n⚠️ Не удалось сгенерировать аудио"
+                    resp.choices[0].message.content += "\n\n\u26a0\ufe0f Failed to generate audio"
                     logger.error("No audio generated")
                 return resp
             if request.stream:
