@@ -24,3 +24,6 @@ mongo_data/
 postgres_data/
 
 
+
+# Agent memory (personal, not for repo)
+.agent/
