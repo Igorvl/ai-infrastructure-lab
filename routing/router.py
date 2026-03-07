@@ -1,4 +1,4 @@
-import os, json, logging, httpx, uuid, re, asyncio, time, struct
+import os, json, logging, httpx, uuid, re, asyncio, time, struct, subprocess
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, FileResponse
@@ -91,6 +91,37 @@ if SALUTE_AVAILABLE:
 else:
     logger.info("SaluteSpeech: NOT configured (set SALUTE_SPEECH_KEY)")
 
+# ========== CHATTERBOX TTS (PREMIUM ENGLISH) ==========
+CHATTERBOX_URL = os.getenv("CHATTERBOX_URL", "http://tts-chatterbox:4123")
+CHATTERBOX_AVAILABLE = False
+
+async def check_chatterbox():
+    """Check if Chatterbox TTS is available"""
+    global CHATTERBOX_AVAILABLE
+    try:
+        async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
+            r = await client.get(f"{CHATTERBOX_URL}/health")
+            if r.status_code == 200:
+                data = r.json()
+                CHATTERBOX_AVAILABLE = data.get("model_loaded", False)
+                logger.info(f"Chatterbox TTS: {'ready' if CHATTERBOX_AVAILABLE else 'model loading...'}")
+            else:
+                logger.warning(f"Chatterbox TTS: health check failed ({r.status_code})")
+    except Exception as e:
+        logger.warning(f"Chatterbox TTS: not available ({e})")
+
+# Schedule startup check
+@app.on_event("startup")
+async def startup_check_chatterbox():
+    await check_chatterbox()
+
+CHATTERBOX_VOICES = {
+    "chatterbox": {"label": "Chatterbox Default (expressive)", "exaggeration": 0.6, "cfg_weight": 0.5, "temperature": 0.8, "speed": 0.85},
+    "chatterbox-expressive": {"label": "Chatterbox Expressive (dramatic)", "exaggeration": 1.2, "cfg_weight": 0.3, "temperature": 0.9, "speed": 0.85},
+    "chatterbox-calm": {"label": "Chatterbox Calm (narration)", "exaggeration": 0.3, "cfg_weight": 0.7, "temperature": 0.7, "speed": 0.82},
+    "chatterbox-storyteller": {"label": "Chatterbox Storyteller (audiobooks)", "exaggeration": 0.8, "cfg_weight": 0.5, "temperature": 0.85, "speed": 0.85},
+}
+
 # ========== KEY ROTATION ==========
 def load_api_keys(prefix: str) -> list[str]:
     keys = []
@@ -138,9 +169,9 @@ def detect_language(text: str) -> str:
 
 # ========== VOICE DEFINITIONS ==========
 SALUTE_VOICES = {
-    "salute-may": {"label": "Наталья (female, clear)", "model": "Nec_24000"},
-    "salute-bys": {"label": "Борис (male, confident)", "model": "Bys_24000"},
     "salute-may": {"label": "Марфа (female, warm)", "model": "May_24000"},
+    "salute-nec": {"label": "Наталья (female, clear)", "model": "Nec_24000"},
+    "salute-bys": {"label": "Борис (male, confident)", "model": "Bys_24000"},
     "salute-tur": {"label": "Тур (male, deep)", "model": "Tur_24000"},
     "salute-ost": {"label": "Александра (female, neutral)", "model": "Ost_24000"},
     "salute-pon": {"label": "Сергей (male, friendly)", "model": "Pon_24000"},
@@ -217,6 +248,30 @@ Output ONLY the text to be read."""
 
 # ========== TTS ENGINES ==========
 
+def audio_adjust_speed(audio_bytes: bytes, speed: float = 1.0) -> bytes:
+    """Adjust audio playback speed using ffmpeg atempo filter.
+    Speed 0.85 = 15% slower (more comfortable for audiobooks).
+    Processes in memory via pipes — adds <0.1s overhead.
+    """
+    if speed == 1.0 or not audio_bytes:
+        return audio_bytes
+    try:
+        proc = subprocess.run(
+            ['ffmpeg', '-i', 'pipe:0', '-filter:a', f'atempo={speed}',
+             '-f', 'wav', '-y', 'pipe:1'],
+            input=audio_bytes, capture_output=True, timeout=30
+        )
+        if proc.returncode == 0 and len(proc.stdout) > 1000:
+            logger.info(f"Speed adjust: {speed}x, {len(audio_bytes)} -> {len(proc.stdout)} bytes")
+            return proc.stdout
+        else:
+            logger.warning(f"ffmpeg speed adjust failed (rc={proc.returncode}), using original")
+    except FileNotFoundError:
+        logger.warning("ffmpeg not found, skipping speed adjustment (apt-get install ffmpeg)")
+    except Exception as e:
+        logger.warning(f"Speed adjust error: {e}, using original")
+    return audio_bytes
+
 def wav_to_mp3_raw(wav_data: bytes) -> bytes:
     """Simple WAV wrapper - returns as is (MP3 conversion optional)"""
     return wav_data
@@ -246,7 +301,7 @@ async def tts_salute(text: str, voice: str = "salute-may") -> bytes | None:
 
     # Get model name from voice id
     voice_info = SALUTE_VOICES.get(voice)
-    model_name = voice_info["model"] if voice_info else "Nec_24000"
+    model_name = voice_info["model"] if voice_info else "May_24000"
 
     try:
         async with httpx.AsyncClient(timeout=60.0, verify=False) as client:
@@ -287,6 +342,43 @@ async def tts_silero(text: str, voice: str = "xenia") -> bytes | None:
         logger.error(f"Silero TTS error: {e}")
     return None
 
+async def tts_chatterbox(text: str, voice: str = "chatterbox") -> bytes | None:
+    """Generate speech using Chatterbox TTS (premium English, OpenAI-compatible API)
+    Applies speed adjustment via ffmpeg atempo post-processing.
+    """
+    global CHATTERBOX_AVAILABLE
+    if not CHATTERBOX_AVAILABLE:
+        # Try to re-check availability
+        await check_chatterbox()
+        if not CHATTERBOX_AVAILABLE:
+            return None
+
+    # Get voice settings (exaggeration, cfg_weight, temperature, speed)
+    voice_settings = CHATTERBOX_VOICES.get(voice, CHATTERBOX_VOICES["chatterbox"])
+
+    payload = {
+        "input": text,
+        "exaggeration": voice_settings["exaggeration"],
+        "cfg_weight": voice_settings["cfg_weight"],
+        "temperature": voice_settings["temperature"],
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=300.0, trust_env=False) as client:
+            r = await client.post(f"{CHATTERBOX_URL}/v1/audio/speech", json=payload)
+            if r.status_code == 200 and len(r.content) > 1000:
+                logger.info(f"Chatterbox TTS OK: {len(r.content)} bytes, voice={voice}, exag={voice_settings['exaggeration']}")
+                # Apply speed adjustment (0.85 = 15% slower)
+                speed = voice_settings.get("speed", 1.0)
+                audio = audio_adjust_speed(r.content, speed)
+                return audio
+            else:
+                error_msg = r.text[:200] if r.status_code != 200 else f"content too small ({len(r.content)} bytes)"
+                logger.error(f"Chatterbox TTS error: {r.status_code} {error_msg}")
+    except Exception as e:
+        logger.error(f"Chatterbox TTS error: {e}")
+    return None
+
 async def tts_kokoro(text: str, voice: str = "af_heart") -> bytes | None:
     """Generate speech using Kokoro"""
     payload = {
@@ -310,9 +402,13 @@ def is_salute_voice(voice: str) -> bool:
 def is_silero_voice(voice: str) -> bool:
     return voice.startswith("silero-")
 
+def is_chatterbox_voice(voice: str) -> bool:
+    return voice.startswith("chatterbox")
+
 async def tts_chunk(text: str, chunk_idx: int, voice: str = "af_heart") -> bytes | None:
     """Universal TTS: selects engine by voice and language.
     Priority for Russian: SaluteSpeech -> Silero -> Kokoro (fallback)
+    Priority for English: Chatterbox -> Kokoro (fallback)
     """
     lang = detect_language(text)
 
@@ -337,10 +433,19 @@ async def tts_chunk(text: str, chunk_idx: int, voice: str = "af_heart") -> bytes
         logger.warning(f"  Chunk {chunk_idx}: Silero failed, trying Kokoro")
         return await tts_kokoro(text, "af_heart")
 
+    # If Chatterbox voice explicitly selected
+    if is_chatterbox_voice(voice):
+        logger.info(f"  Chunk {chunk_idx}: Chatterbox ({voice}, {len(text)} chars)")
+        audio = await tts_chatterbox(text, voice)
+        if audio:
+            return audio
+        logger.warning(f"  Chunk {chunk_idx}: Chatterbox failed, falling back to Kokoro")
+        return await tts_kokoro(text, "af_heart")
+
     # Auto: Russian text -> SaluteSpeech (best quality) -> Silero (fallback)
     if lang == "ru":
         if SALUTE_AVAILABLE:
-            logger.info(f"  Chunk {chunk_idx}: Russian -> SaluteSpeech (Nec_24000, {len(text)} chars)")
+            logger.info(f"  Chunk {chunk_idx}: Russian -> SaluteSpeech (May_24000, {len(text)} chars)")
             audio = await tts_salute(text, "salute-may")
             if audio:
                 return audio
@@ -352,9 +457,19 @@ async def tts_chunk(text: str, chunk_idx: int, voice: str = "af_heart") -> bytes
             if audio:
                 return audio
 
-    # English text or all Russian backends failed -> Kokoro
-    logger.info(f"  Chunk {chunk_idx}: Kokoro ({voice}, {len(text)} chars)")
-    return await tts_kokoro(text, voice)
+    # English text -> Chatterbox (premium) -> Kokoro (fallback)
+    if lang == "en" and CHATTERBOX_AVAILABLE:
+        cb_voice = voice if is_chatterbox_voice(voice) else "chatterbox-storyteller"
+        logger.info(f"  Chunk {chunk_idx}: English -> Chatterbox ({cb_voice}, {len(text)} chars)")
+        audio = await tts_chatterbox(text, cb_voice)
+        if audio:
+            return audio
+        logger.warning(f"  Chunk {chunk_idx}: Chatterbox failed, falling back to Kokoro")
+
+    # Kokoro final fallback
+    kokoro_voice = voice if voice in KOKORO_VOICES else "af_heart"
+    logger.info(f"  Chunk {chunk_idx}: Kokoro fallback ({kokoro_voice}, {len(text)} chars)")
+    return await tts_kokoro(text, kokoro_voice)
 
 # ========== AUDIOBOOK: BACKGROUND TASKS ==========
 book_jobs: dict[str, dict] = {}
@@ -480,13 +595,13 @@ async def create_audiobook(
     if len(text.strip()) < 10:
         raise HTTPException(status_code=400, detail="File too short")
 
-    # Auto-detect: Russian text -> SaluteSpeech (best), English -> Kokoro
+    # Auto-detect: Russian -> SaluteSpeech, English -> Chatterbox
     if voice == "auto":
         lang = detect_language(text)
         if lang == "ru":
             voice = "salute-may" if SALUTE_AVAILABLE else "silero-xenia"
         else:
-            voice = "af_heart"
+            voice = "chatterbox-storyteller" if CHATTERBOX_AVAILABLE else "af_heart"
         logger.info(f"Auto-detected language: {lang}, voice: {voice}")
 
     job_id = uuid.uuid4().hex
@@ -532,8 +647,13 @@ async def list_audiobook_jobs():
 
 @app.get("/v1/audio/voices")
 async def list_voices():
-    """Combined voice list: SaluteSpeech + Silero + Kokoro"""
+    """Combined voice list: Chatterbox + SaluteSpeech + Silero + Kokoro"""
     voices = {}
+
+    # Chatterbox voices (premium English)
+    if CHATTERBOX_AVAILABLE:
+        for vid, info in CHATTERBOX_VOICES.items():
+            voices[vid] = {"id": vid, "label": info["label"], "engine": "chatterbox", "lang": "en"}
 
     # Kokoro voices (English)
     try:
@@ -596,8 +716,18 @@ async def generate_audio(text: str) -> str:
                     f.write(audio)
                 return f"{AUDIO_PUBLIC_URL}/{fname}"
 
-    # English or all Russian backends failed -> Kokoro
-    logger.info(f"Chat TTS: Kokoro (english, {len(clean_text)} chars)")
+    # English -> Chatterbox (premium) -> Kokoro (fallback)
+    if lang == "en" and CHATTERBOX_AVAILABLE:
+        logger.info(f"Chat TTS: Chatterbox (english, {len(clean_text)} chars)")
+        audio = await tts_chatterbox(clean_text, "chatterbox")
+        if audio:
+            fname = f"voice_{uuid.uuid4().hex}.wav"
+            with open(os.path.join(AUDIO_OUTPUT_PATH, fname), "wb") as f:
+                f.write(audio)
+            return f"{AUDIO_PUBLIC_URL}/{fname}"
+
+    # Kokoro final fallback
+    logger.info(f"Chat TTS: Kokoro fallback ({len(clean_text)} chars)")
     kokoro_payload = {
         "input": clean_text, "model": "kokoro", "voice": "af_heart",
         "response_format": "mp3", "speed": 1.0, "lang_code": "a"

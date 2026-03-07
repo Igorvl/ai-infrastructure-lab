@@ -12,7 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Копируем и ставим зависимости
 COPY routing/requirements.txt .
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 RUN pip install --user --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir litellm fastapi uvicorn httpx edge-tts
 
 # Stage 2: Runtime (Final Image)
