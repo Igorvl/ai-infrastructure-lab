@@ -377,7 +377,7 @@ async def tts_chatterbox(text: str, voice: str = "chatterbox") -> bytes | None:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=300.0, trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=1200.0, trust_env=False) as client:
             r = await client.post(f"{CHATTERBOX_URL}/v1/audio/speech", json=payload)
             if r.status_code == 200 and len(r.content) > 1000:
                 logger.info(f"Chatterbox TTS OK: {len(r.content)} bytes, voice={voice}, exag={voice_settings['exaggeration']}")
@@ -389,7 +389,7 @@ async def tts_chatterbox(text: str, voice: str = "chatterbox") -> bytes | None:
                 error_msg = r.text[:200] if r.status_code != 200 else f"content too small ({len(r.content)} bytes)"
                 logger.error(f"Chatterbox TTS error: {r.status_code} {error_msg}")
     except Exception as e:
-        logger.error(f"Chatterbox TTS error: {e}")
+        logger.error(f"Chatterbox TTS error: {repr(e)}")
     return None
 
 async def tts_kokoro(text: str, voice: str = "af_heart") -> bytes | None:
@@ -399,7 +399,7 @@ async def tts_kokoro(text: str, voice: str = "af_heart") -> bytes | None:
         "response_format": "mp3", "speed": 1.0, "lang_code": "a"
     }
     try:
-        async with httpx.AsyncClient(timeout=300.0, trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=1200.0, trust_env=False) as client:
             r = await client.post("http://tts-kokoro:8880/v1/audio/speech", json=payload)
             if r.status_code == 200 and len(r.content) > 0:
                 logger.info(f"Kokoro TTS OK: {len(r.content)} bytes, voice={voice}")
@@ -421,7 +421,7 @@ def is_chatterbox_voice(voice: str) -> bool:
 async def tts_chunk(text: str, chunk_idx: int, voice: str = "af_heart") -> bytes | None:
     """Universal TTS: selects engine by voice and language.
     Priority for Russian: SaluteSpeech -> Silero -> Kokoro (fallback)
-    Priority for English: Chatterbox -> Kokoro (fallback)
+    Priority for English: Chatterbox -> only Chatterbox
     """
     lang = detect_language(text)
 
@@ -452,8 +452,9 @@ async def tts_chunk(text: str, chunk_idx: int, voice: str = "af_heart") -> bytes
         audio = await tts_chatterbox(text, voice)
         if audio:
             return audio
-        logger.warning(f"  Chunk {chunk_idx}: Chatterbox failed, falling back to Kokoro")
-        return await tts_kokoro(text, "af_heart")
+        logger.error(f"  Chunk {chunk_idx}: Chatterbox completely failed! Aborting fallback. Error: {repr(e)}")
+        # Возвращаем None (чанк фейлится, никакого Kokoro)
+        return None
 
     # Auto: Russian text -> SaluteSpeech (best quality) -> Silero (fallback)
     if lang == "ru":
@@ -679,7 +680,7 @@ async def list_voices():
                     vid = v if isinstance(v, str) else v.get("id", v.get("name", ""))
                     if vid:
                         voices[vid] = {"id": vid, "label": KOKORO_VOICES.get(vid, vid), "engine": "kokoro", "lang": "en"}
-    except Exception:
+    except Exception as e:
         for vid, label in KOKORO_VOICES.items():
             voices[vid] = {"id": vid, "label": label, "engine": "kokoro", "lang": "en"}
 
