@@ -4,6 +4,9 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from litellm import acompletion
+import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from db import db
+from api_dna import router as dna_router
 
 # Silero TTS: set cache dir BEFORE importing torch (fix Permission denied)
 os.environ['TORCH_HOME'] = '/tmp/torch_cache'
@@ -19,9 +22,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(messa
 logger = logging.getLogger("AI-Router")
 
 app = FastAPI(title="Project DNA Router")
+app.include_router(dna_router)
 AUDIO_OUTPUT_PATH = "/app/audio_out"
 AUDIO_PUBLIC_URL = os.getenv("AUDIO_PUBLIC_URL", "http://172.25.9.33:8090")
 os.makedirs(AUDIO_OUTPUT_PATH, exist_ok=True)
+
+# ========== DATABASE LIFECYCLE ==========
+@app.on_event("startup")
+async def startup_db():
+    await db.connect()
+
+@app.on_event("shutdown")
+async def shutdown_db():
+    await db.disconnect()
 
 CONFIG_PATH = os.getenv("CONFIG_PATH", "deploy/antigravity.json")
 
