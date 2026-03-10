@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 # Import our database singleton
 from db import db
+from qdrant_db import vector_db
 logger = logging.getLogger("AI-Router.DNA")
 # Create sub-router with /v1/dna prefix
 #   APIRouter — модульный роутер FastAPI
@@ -127,6 +128,13 @@ async def capture_generation(data: CaptureRequest):
         reference_urls=data.reference_urls,
         status=data.status,
     )
+    # Векторизуем и сохраняем текст в Qdrant
+    vector_db.add_prompt(
+        project_slug=data.project_slug,
+        prompt_text=data.prompt,
+        generation_id=str(gen["id"])
+    )
+
     logger.info(f"Captured gen #{gen['seq_num']} for {data.project_slug}")
     return {
         "generation_id": str(gen["id"]),

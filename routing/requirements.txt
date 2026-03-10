@@ -11,3 +11,5 @@ numpy
 omegaconf
 scipy
 asyncpg
+qdrant-client
+fastembed
