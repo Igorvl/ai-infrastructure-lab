@@ -35,6 +35,11 @@ class ProjectCreate(BaseModel):
     tags: list = []
 class DNAUpdate(BaseModel):
     dna_document: str
+class SearchRequest(BaseModel):
+    query: str
+    project_slug: str = ""
+    limit: int = 5
+
 class CaptureRequest(BaseModel):
     """What Safari Extension sends for each generation."""
     project_slug: str            # which project
@@ -171,6 +176,17 @@ async def list_accounts():
     accounts = await db.list_accounts()
     return {"accounts": accounts}
 # ==================== Health Check ====================
+
+@router.post("/search")
+async def search_prompts(data: SearchRequest):
+    """Semantic search: find similar prompts using Qdrant vectors."""
+    results = vector_db.search_similar_prompts(
+        project_slug=data.project_slug,
+        query_text=data.query,
+        limit=data.limit
+    )
+    return {"query": data.query, "results": results, "count": len(results)}
+
 @router.get("/health")
 async def dna_health():
     """Check database connectivity."""
