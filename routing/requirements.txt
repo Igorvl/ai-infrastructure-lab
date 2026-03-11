@@ -1,16 +1,27 @@
+# === Core Framework ===
 fastapi
 uvicorn
-litellm
 pydantic
 python-dotenv
-tiktoken
-httpx[socks]
 python-multipart
+
+# === LLM Gateway ===
+litellm
+tiktoken
+
+# === HTTP Client ===
+httpx[socks]
+
+# === TTS ===
+edge-tts
+
+# === ML / Audio ===
 torch --index-url https://download.pytorch.org/whl/cpu
 numpy
 omegaconf
 scipy
+
+# === Databases ===
 asyncpg
-qdrant-client
-fastembed
+qdrant-client[fastembed]
 minio

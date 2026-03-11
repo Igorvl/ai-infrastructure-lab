@@ -1,33 +1,51 @@
 # deploy/Dockerfile.router
-# Stage 1: Builder (compiles Python dependencies)
-FROM python:3.12-slim as builder
+# ============================================================
+# Multi-stage build: Builder → Runtime
+# Builder: heavy tools (gcc, build-essential) for compiling C-extensions
+# Runtime: clean slim image with only Python packages + ffmpeg
+# ============================================================
+
+# ── Stage 1: Builder ──────────────────────────────────────────
+FROM python:3.12-slim AS builder
 WORKDIR /app
-# Build tools for compiling Python C-extensions
+
+# Build tools needed to compile Python C-extensions (numpy, scipy, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
-# Install Python dependencies
+
+# Install ALL Python dependencies with --user (into /root/.local)
 COPY routing/requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir litellm fastapi uvicorn httpx edge-tts
-# Stage 2: Runtime (lean production image)
+
+# ── Stage 2: Runtime ─────────────────────────────────────────
 FROM python:3.12-slim
-# System dependencies for RUNTIME (ffmpeg for audio processing)
+
+# System packages needed at RUNTIME (not build time!)
+# ffmpeg: audio format conversion (MP3 concatenation for audiobooks)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
+
 # Security: non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN groupadd -r appuser && useradd -r -g appuser -m appuser
 WORKDIR /app
-# Copy Python packages from builder
+
+# Copy Python packages from builder stage
+# ONLY /root/.local is copied — system packages (gcc) stay behind!
 COPY --from=builder /root/.local /home/appuser/.local
-COPY --from=builder /app /app
-# Copy application code
+
+# Copy application source code
 COPY routing/ ./routing/
 COPY deploy/antigravity.json ./deploy/
-# Configure paths and permissions
+
+# Configure environment
 ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PYTHONPATH=/app
+
+# Ownership
 RUN chown -R appuser:appuser /app
 USER appuser
+
+# Start server with 4 workers (multiprocess for handling concurrent requests)
 CMD ["uvicorn", "routing.router:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

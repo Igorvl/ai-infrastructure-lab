@@ -364,20 +364,18 @@ async def tts_silero(text: str, voice: str = "xenia") -> bytes | None:
         logger.error(f"Silero TTS error: {e}")
     return None
 
-async def tts_chatterbox(text: str, voice: str = "chatterbox") -> bytes | None:
+async def tts_chatterbox(text: str, voice: str = "chatterbox", max_retries: int = 3) -> bytes | None:
     """Generate speech using Chatterbox TTS (premium English, OpenAI-compatible API)
     Applies speed adjustment via ffmpeg atempo post-processing.
+    Includes retry logic with health checks for resilience.
     """
     global CHATTERBOX_AVAILABLE
     if not CHATTERBOX_AVAILABLE:
-        # Try to re-check availability
         await check_chatterbox()
         if not CHATTERBOX_AVAILABLE:
             return None
 
-    # Get voice settings (exaggeration, cfg_weight, temperature, speed)
     voice_settings = CHATTERBOX_VOICES.get(voice, CHATTERBOX_VOICES["chatterbox"])
-
     payload = {
         "input": text,
         "exaggeration": voice_settings["exaggeration"],
@@ -385,20 +383,36 @@ async def tts_chatterbox(text: str, voice: str = "chatterbox") -> bytes | None:
         "temperature": voice_settings["temperature"],
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=1200.0, trust_env=False) as client:
-            r = await client.post(f"{CHATTERBOX_URL}/v1/audio/speech", json=payload)
-            if r.status_code == 200 and len(r.content) > 1000:
-                logger.info(f"Chatterbox TTS OK: {len(r.content)} bytes, voice={voice}, exag={voice_settings['exaggeration']}")
-                # Apply speed adjustment (0.85 = 15% slower)
-                speed = voice_settings.get("speed", 1.0)
-                audio = audio_adjust_speed(r.content, speed)
-                return audio
-            else:
-                error_msg = r.text[:200] if r.status_code != 200 else f"content too small ({len(r.content)} bytes)"
-                logger.error(f"Chatterbox TTS error: {r.status_code} {error_msg}")
-    except Exception as e:
-        logger.error(f"Chatterbox TTS error: {repr(e)}")
+    for attempt in range(max_retries):
+        try:
+            async with httpx.AsyncClient(timeout=1200.0, trust_env=False) as client:
+                r = await client.post(f"{CHATTERBOX_URL}/v1/audio/speech", json=payload)
+                if r.status_code == 200 and len(r.content) > 1000:
+                    logger.info(f"Chatterbox TTS OK: {len(r.content)} bytes, voice={voice}, attempt={attempt+1}")
+                    speed = voice_settings.get("speed", 1.0)
+                    audio = audio_adjust_speed(r.content, speed)
+                    return audio
+                else:
+                    error_msg = r.text[:200] if r.status_code != 200 else f"content too small ({len(r.content)} bytes)"
+                    logger.error(f"Chatterbox TTS error: {r.status_code} {error_msg}")
+        except Exception as e:
+            logger.error(f"Chatterbox TTS error (attempt {attempt+1}/{max_retries}): {repr(e)}")
+
+        # Retry logic: wait, re-check health, try again
+        if attempt < max_retries - 1:
+            wait = 30 * (attempt + 1)  # 30s, 60s
+            logger.warning(f"Chatterbox: retrying in {wait}s (attempt {attempt+1}/{max_retries})")
+            await asyncio.sleep(wait)
+            # Re-check if Chatterbox is still alive
+            await check_chatterbox()
+            if not CHATTERBOX_AVAILABLE:
+                logger.warning(f"Chatterbox is DOWN, waiting extra 60s for container recovery...")
+                await asyncio.sleep(60)
+                await check_chatterbox()
+                if not CHATTERBOX_AVAILABLE:
+                    logger.error(f"Chatterbox still DOWN after recovery wait, giving up")
+                    return None
+
     return None
 
 async def tts_kokoro(text: str, voice: str = "af_heart") -> bytes | None:
@@ -538,6 +552,9 @@ async def process_book(job_id: str, text: str, voice: str = "af_heart"):
         logger.info(f"Book [{job_id[:8]}]: {len(chunks)} chunks, {total_chars} chars, lang={lang}, voice={voice}")
 
         audio_parts: list[bytes] = []
+        consecutive_failures = 0
+        is_heavy_tts = is_chatterbox_voice(voice)  # Chatterbox needs more cooldown
+
         for i, chunk in enumerate(chunks):
             job["current_chunk"] = i + 1
             job["progress"] = round((i / len(chunks)) * 100)
@@ -545,11 +562,26 @@ async def process_book(job_id: str, text: str, voice: str = "af_heart"):
             audio = await tts_chunk(chunk, i + 1, voice=voice)
             if audio:
                 audio_parts.append(audio)
+                consecutive_failures = 0  # Reset on success
             else:
                 job["errors"] = job.get("errors", 0) + 1
-                logger.warning(f"  Chunk {i+1} failed, skipping")
+                consecutive_failures += 1
+                logger.warning(f"  Chunk {i+1} failed (consecutive: {consecutive_failures})")
 
-            await asyncio.sleep(0.3)
+                # If 5+ consecutive failures -> TTS container is probably dead, abort
+                if consecutive_failures >= 5:
+                    logger.error(f"Book [{job_id[:8]}]: {consecutive_failures} consecutive failures! Aborting remaining chunks.")
+                    break
+                # If 3+ consecutive failures -> wait for recovery
+                elif consecutive_failures >= 3:
+                    logger.warning(f"Book [{job_id[:8]}]: {consecutive_failures} failures in a row, waiting 120s for TTS recovery...")
+                    await asyncio.sleep(120)
+
+            # Cooldown between chunks:
+            # Chatterbox on CPU needs 5s to free memory between generations
+            # Other TTS engines are lighter and need only 0.5s
+            cooldown = 5.0 if is_heavy_tts else 0.5
+            await asyncio.sleep(cooldown)
 
         if not audio_parts:
             job["status"] = "failed"
