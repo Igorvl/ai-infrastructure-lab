@@ -20,6 +20,8 @@ from pydantic import BaseModel
 from db import db
 from qdrant_db import vector_db
 from minio_storage import storage
+from auto_summarize import maybe_summarize
+import asyncio
 logger = logging.getLogger("AI-Router.DNA")
 # Create sub-router with /v1/dna prefix
 #   APIRouter — модульный роутер FastAPI
@@ -141,6 +143,12 @@ async def capture_generation(data: CaptureRequest):
         generation_id=str(gen["id"])
     )
 
+    # Auto-summarize in background (non-blocking)
+    asyncio.create_task(maybe_summarize(
+        project_id=str(gen["project_id"]),
+        project_slug=data.project_slug,
+        current_seq=gen["seq_num"]
+    ))
     logger.info(f"Captured gen #{gen['seq_num']} for {data.project_slug}")
     return {
         "generation_id": str(gen["id"]),
