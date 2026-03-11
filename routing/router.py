@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from litellm import acompletion
+from fastapi.middleware.cors import CORSMiddleware
 import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from db import db
 from api_dna import router as dna_router
@@ -22,6 +23,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(messa
 logger = logging.getLogger("AI-Router")
 
 app = FastAPI(title="Project DNA Router")
+
+# CORS: allow Dashboard (port 8090) to call API (port 8000)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(dna_router)
 AUDIO_OUTPUT_PATH = "/app/audio_out"
 AUDIO_PUBLIC_URL = os.getenv("AUDIO_PUBLIC_URL", "http://172.25.9.33:8090")
@@ -452,7 +461,7 @@ async def tts_chunk(text: str, chunk_idx: int, voice: str = "af_heart") -> bytes
         audio = await tts_chatterbox(text, voice)
         if audio:
             return audio
-        logger.error(f"  Chunk {chunk_idx}: Chatterbox completely failed! Aborting fallback. Error: {repr(e)}")
+        logger.error(f"  Chunk {chunk_idx}: Chatterbox returned no audio, skipping chunk")
         # Возвращаем None (чанк фейлится, никакого Kokoro)
         return None
 
@@ -478,7 +487,8 @@ async def tts_chunk(text: str, chunk_idx: int, voice: str = "af_heart") -> bytes
         audio = await tts_chatterbox(text, cb_voice)
         if audio:
             return audio
-        logger.warning(f"  Chunk {chunk_idx}: Chatterbox failed, falling back to Kokoro")
+        logger.error(f"  Chunk {chunk_idx}: Chatterbox failed, skipping chunk")
+        return None
 
     # Kokoro final fallback
     kokoro_voice = voice if voice in KOKORO_VOICES else "af_heart"

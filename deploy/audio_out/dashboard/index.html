@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project DNA — Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0a0a0f;
+            --surface: rgba(255,255,255,0.04);
+            --surface-hover: rgba(255,255,255,0.08);
+            --border: rgba(255,255,255,0.08);
+            --text: #e4e4e7;
+            --text-dim: #71717a;
+            --accent: #22d3ee;
+            --accent-glow: rgba(34,211,238,0.15);
+            --green: #4ade80;
+            --purple: #a78bfa;
+            --orange: #fb923c;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        /* Header */
+        .header {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            backdrop-filter: blur(20px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(10,10,15,0.8);
+        }
+        .header h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header .status {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        /* Layout */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 2rem;
+        }
+        /* Sidebar */
+        .sidebar { display: flex; flex-direction: column; gap: 1rem; }
+        /* Cards */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: all 0.2s;
+        }
+        .card:hover { background: var(--surface-hover); }
+        .card-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        /* Projects list */
+        .project-item {
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            margin-bottom: 0.25rem;
+        }
+        .project-item:hover, .project-item.active {
+            background: var(--accent-glow);
+            border-left: 2px solid var(--accent);
+        }
+        .project-item .name {
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        .project-item .meta {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+        }
+        /* Search */
+        .search-box {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-box:focus { border-color: var(--accent); }
+        .search-box::placeholder { color: var(--text-dim); }
+        /* Main content */
+        .main { display: flex; flex-direction: column; gap: 1.5rem; }
+        /* DNA Context */
+        .dna-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .dna-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        .dna-card.strategic { border-left: 3px solid var(--purple); }
+        .dna-card.tactical { border-left: 3px solid var(--accent); }
+        .dna-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+        .dna-card.strategic .dna-label { color: var(--purple); }
+        .dna-card.tactical .dna-label { color: var(--accent); }
+        .dna-text {
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-dim);
+        }
+        /* Stats */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), var(--green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.25rem;
+        }
+        /* Generations table */
+        .gen-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .gen-table th {
+            text-align: left;
+            padding: 0.75rem;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+        }
+        .gen-table td {
+            padding: 0.75rem;
+            font-size: 0.85rem;
+            border-bottom: 1px solid var(--border);
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .gen-table tr:hover { background: var(--surface-hover); }
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        .badge-green { background: rgba(74,222,128,0.15); color: var(--green); }
+        .badge-orange { background: rgba(251,146,60,0.15); color: var(--orange); }
+        /* Search results */
+        .search-result {
+            padding: 1rem;
+            border-radius: 8px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            margin-bottom: 0.5rem;
+        }
+        .search-score {
+            font-size: 0.75rem;
+            color: var(--accent);
+            font-weight: 600;
+        }
+        .search-prompt {
+            font-size: 0.85rem;
+            margin-top: 0.25rem;
+        }
+        /* Empty state */
+        .empty {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+        /* Responsive */
+        @media (max-width: 900px) {
+            .container { grid-template-columns: 1fr; }
+            .dna-grid { grid-template-columns: 1fr; }
+            .stats-row { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧬 Project DNA</h1>
+        <div class="status">
+            <div class="status-dot"></div>
+            <span id="api-status">Connecting...</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="card">
+                <div class="card-title">🔍 Semantic Search</div>
+                <input type="text" class="search-box" id="searchInput"
+                       placeholder="Search prompts by meaning..."
+                       onkeydown="if(event.key==='Enter')doSearch()">
+                <div id="searchResults" style="margin-top: 1rem;"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">📋 Projects</div>
+                <div id="projectList"><div class="empty">Loading...</div></div>
+            </div>
+        </div>
+
+        <div class="main">
+            <div class="stats-row" id="statsRow">
+                <div class="stat-card"><div class="stat-value" id="statProjects">-</div><div class="stat-label">Projects</div></div>
+                <div class="stat-card"><div class="stat-value" id="statGens">-</div><div class="stat-label">Generations</div></div>
+                <div class="stat-card"><div class="stat-value" id="statFiles">-</div><div class="stat-label">Files</div></div>
+                <div class="stat-card"><div class="stat-value" id="statDNA">-</div><div class="stat-label">DNA Contexts</div></div>
+            </div>
+
+            <div class="dna-grid" id="dnaGrid" style="display:none;">
+                <div class="dna-card strategic">
+                    <div class="dna-label">🎯 Strategic Context</div>
+                    <div class="dna-text" id="strategicText">No strategic context yet</div>
+                </div>
+                <div class="dna-card tactical">
+                    <div class="dna-label">⚡ Tactical Context</div>
+                    <div class="dna-text" id="tacticalText">No tactical context yet</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">📊 Recent Generations</div>
+                <table class="gen-table">
+                    <thead><tr><th>#</th><th>Prompt</th><th>Status</th><th>Date</th></tr></thead>
+                    <tbody id="genTableBody"><tr><td colspan="4" class="empty">Select a project</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = window.location.hostname === 'localhost'
+            ? 'http://localhost:8000'
+            : `http://${window.location.hostname}:8000`;
+
+        let currentSlug = null;
+
+        // Check API health
+        async function checkHealth() {
+            try {
+                const r = await fetch(`${API}/v1/dna/health`);
+                if (r.ok) {
+                    document.getElementById('api-status').textContent = 'System Online';
+                } else throw new Error();
+            } catch {
+                document.getElementById('api-status').textContent = 'API Offline';
+                document.querySelector('.status-dot').style.background = '#ef4444';
+            }
+        }
+
+        // Load projects
+        async function loadProjects() {
+            try {
+                const r = await fetch(`${API}/v1/dna/projects`);
+                const projects = await r.json();
+                const list = document.getElementById('projectList');
+
+                document.getElementById('statProjects').textContent = projects.length;
+
+                if (!projects.length) {
+                    list.innerHTML = '<div class="empty">No projects yet</div>';
+                    return;
+                }
+
+                list.innerHTML = projects.map(p => `
+                    <div class="project-item ${p.slug === currentSlug ? 'active' : ''}"
+                         onclick="selectProject('${p.slug}')">
+                        <div class="name">${p.name || p.slug}</div>
+                        <div class="meta">${p.tags ? p.tags.join(', ') : 'no tags'}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Load projects error:', e);
+            }
+        }
+
+        // Select project
+        async function selectProject(slug) {
+            currentSlug = slug;
+            loadProjects(); // refresh active state
+
+            // Load DNA context
+            try {
+                const r = await fetch(`${API}/v1/dna/context/${slug}`);
+                const ctx = await r.json();
+                const grid = document.getElementById('dnaGrid');
+                grid.style.display = 'grid';
+
+                document.getElementById('strategicText').textContent =
+                    ctx.strategic_context || 'Not enough data yet (need 20+ generations)';
+                document.getElementById('tacticalText').textContent =
+                    ctx.tactical_context || 'Not enough data yet (need 5+ generations)';
+
+                const hasDNA = (ctx.strategic_context ? 1 : 0) + (ctx.tactical_context ? 1 : 0);
+                document.getElementById('statDNA').textContent = hasDNA;
+            } catch (e) {
+                console.error('Load context error:', e);
+            }
+
+            // Load generations
+            try {
+                const r = await fetch(`${API}/v1/dna/generations/${slug}`);
+                const gens = await r.json();
+                const tbody = document.getElementById('genTableBody');
+
+                document.getElementById('statGens').textContent = gens.length;
+
+                if (!gens.length) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty">No generations</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = gens.map(g => `<tr>
+                    <td>#${g.seq_num}</td>
+                    <td title="${g.prompt}">${g.prompt}</td>
+                    <td><span class="badge ${g.status === 'generated' ? 'badge-green' : 'badge-orange'}">${g.status}</span></td>
+                    <td>${new Date(g.created_at).toLocaleDateString()}</td>
+                </tr>`).join('');
+            } catch (e) {
+                console.error('Load generations error:', e);
+            }
+
+            // Load files
+            try {
+                const r = await fetch(`${API}/v1/dna/files/${slug}`);
+                const data = await r.json();
+                document.getElementById('statFiles').textContent = data.count || 0;
+            } catch { document.getElementById('statFiles').textContent = '0'; }
+        }
+
+        // Semantic search
+        async function doSearch() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) return;
+
+            const container = document.getElementById('searchResults');
+            container.innerHTML = '<div class="empty">Searching...</div>';
+
+            try {
+                const r = await fetch(`${API}/v1/dna/search`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ query, limit: 5 })
+                });
+                const data = await r.json();
+
+                if (!data.results.length) {
+                    container.innerHTML = '<div class="empty">No matches found</div>';
+                    return;
+                }
+
+                container.innerHTML = data.results.map(r => `
+                    <div class="search-result">
+                        <div class="search-score">Score: ${(r.score * 100).toFixed(1)}%</div>
+                        <div class="search-prompt">${r.text}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                container.innerHTML = '<div class="empty">Search error</div>';
+            }
+        }
+
+        // Init
+        checkHealth();
+        loadProjects();
+        setInterval(checkHealth, 30000);
+    </script>
+</body>
+</html>
