@@ -13,3 +13,4 @@ scipy
 asyncpg
 qdrant-client
 fastembed
+minio

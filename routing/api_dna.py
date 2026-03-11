@@ -14,11 +14,12 @@ Endpoints:
 """
 import logging
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile
 from pydantic import BaseModel
 # Import our database singleton
 from db import db
 from qdrant_db import vector_db
+from minio_storage import storage
 logger = logging.getLogger("AI-Router.DNA")
 # Create sub-router with /v1/dna prefix
 #   APIRouter — модульный роутер FastAPI
@@ -176,6 +177,26 @@ async def list_accounts():
     accounts = await db.list_accounts()
     return {"accounts": accounts}
 # ==================== Health Check ====================
+
+
+@router.post("/upload/{slug}")
+async def upload_image(slug: str, file: UploadFile):
+    """Upload an image to project storage."""
+    data = await file.read()
+    content_type = file.content_type or "application/octet-stream"
+    result = storage.upload_image(
+        project_slug=slug,
+        filename=file.filename,
+        data=data,
+        content_type=content_type
+    )
+    return result
+
+@router.get("/files/{slug}")
+async def list_project_files(slug: str):
+    """List all files for a project."""
+    images = storage.list_objects("project-images", prefix=f"{slug}/")
+    return {"project": slug, "files": images, "count": len(images)}
 
 @router.post("/search")
 async def search_prompts(data: SearchRequest):
