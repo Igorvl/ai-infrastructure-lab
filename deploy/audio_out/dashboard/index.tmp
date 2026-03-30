@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project DNA — Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0a0a0f;
+            --surface: rgba(255,255,255,0.04);
+            --surface-hover: rgba(255,255,255,0.08);
+            --border: rgba(255,255,255,0.08);
+            --text: #e4e4e7;
+            --text-dim: #71717a;
+            --accent: #22d3ee;
+            --accent-glow: rgba(34,211,238,0.15);
+            --green: #4ade80;
+            --purple: #a78bfa;
+            --orange: #fb923c;
+            --red: #ef4444;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        /* Header */
+        .header {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            backdrop-filter: blur(20px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(10,10,15,0.8);
+        }
+        .header h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header .status {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        /* Layout */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 2rem;
+        }
+        /* Sidebar */
+        .sidebar { display: flex; flex-direction: column; gap: 1rem; }
+        /* Cards */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+            transition: all 0.2s;
+        }
+        .card:hover { background: var(--surface-hover); }
+        .card-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        /* Projects list */
+        .project-item {
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            margin-bottom: 0.25rem;
+        }
+        .project-item:hover, .project-item.active {
+            background: var(--accent-glow);
+            border-left: 2px solid var(--accent);
+        }
+        .project-item .name {
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        .project-item .meta {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+        }
+        /* Search */
+        .search-box {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-box:focus { border-color: var(--accent); }
+        .search-box::placeholder { color: var(--text-dim); }
+        /* Main content */
+        .main { display: flex; flex-direction: column; gap: 1.5rem; }
+        /* DNA Context */
+        .dna-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .dna-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        .dna-card.strategic { border-left: 3px solid var(--purple); }
+        .dna-card.tactical { border-left: 3px solid var(--accent); }
+        .dna-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+        .dna-card.strategic .dna-label { color: var(--purple); }
+        .dna-card.tactical .dna-label { color: var(--accent); }
+        .dna-text {
+            font-size: 0.85rem;
+            line-height: 1.6;
+            color: var(--text-dim);
+        }
+        /* Stats */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), var(--green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.25rem;
+        }
+        /* Generations table */
+        .gen-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .gen-table th {
+            text-align: left;
+            padding: 0.75rem;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+        }
+        .gen-table td {
+            padding: 0.75rem;
+            font-size: 0.85rem;
+            border-bottom: 1px solid var(--border);
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .gen-table tr { cursor: pointer; }
+        .gen-table tr:hover { background: var(--surface-hover); }
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        .badge-green { background: rgba(74,222,128,0.15); color: var(--green); }
+        .badge-orange { background: rgba(251,146,60,0.15); color: var(--orange); }
+        
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 2rem;
+        }
+        .modal-content {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 900px;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            background: var(--bg);
+            z-index: 10;
+        }
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+        }
+        .modal-body { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; }
+        .detail-section { display: flex; flex-direction: column; gap: 0.5rem; }
+        .detail-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            font-weight: 600;
+        }
+        .detail-text {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: var(--text);
+            background: var(--surface);
+            padding: 1rem;
+            border-radius: 8px;
+            white-space: pre-wrap;
+        }
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        .image-item {
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            aspect-ratio: 1;
+            background: #111;
+            position: relative;
+        }
+        .image-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+        .image-item img:hover { transform: scale(1.05); }
+        
+        .modal-actions {
+            display: flex;
+            gap: 1rem;
+            padding-bottom: 1rem;
+        }
+        .btn {
+            padding: 0.6rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border: 1px solid transparent;
+        }
+        .btn-outline {
+            background: var(--surface);
+            border-color: var(--border);
+            color: var(--text);
+        }
+        .btn-outline:hover { background: var(--surface-hover); }
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--red);
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+        .btn-danger:hover { background: rgba(239, 68, 68, 0.2); }
+
+        /* Search results */
+        .search-result {
+            padding: 1rem;
+            border-radius: 8px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            margin-bottom: 0.5rem;
+        }
+        .search-score {
+            font-size: 0.75rem;
+            color: var(--accent);
+            font-weight: 600;
+        }
+        .search-prompt {
+            font-size: 0.85rem;
+            margin-top: 0.25rem;
+        }
+        .empty {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+        input[type="checkbox"] {
+            accent-color: var(--red);
+            width: 16px; height: 16px;
+            cursor: pointer;
+        }
+        /* Responsive */
+        @media (max-width: 900px) {
+            .container { grid-template-columns: 1fr; }
+            .dna-grid { grid-template-columns: 1fr; }
+            .stats-row { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧬 Project DNA</h1>
+        <div class="status">
+            <div class="status-dot"></div>
+            <span id="api-status">Connecting...</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="card">
+                <div class="card-title">🔍 Semantic Search</div>
+                <input type="text" class="search-box" id="searchInput"
+                       placeholder="Search prompts by meaning..."
+                       onkeydown="if(event.key==='Enter')doSearch()">
+                <div id="searchResults" style="margin-top: 1rem;"></div>
+            </div>
+            <div class="card">
+                <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>📋 Projects</span>
+                    <button class="btn btn-outline" style="padding: 0.3rem 0.6rem; font-size: 0.7rem;" onclick="promptCreateProject()">+ New</button>
+                </div>
+                <div id="projectList"><div class="empty">Loading...</div></div>
+            </div>
+        </div>
+
+        <div class="main">
+            <div class="stats-row" id="statsRow">
+                <div class="stat-card"><div class="stat-value" id="statProjects">-</div><div class="stat-label">Projects</div></div>
+                <div class="stat-card"><div class="stat-value" id="statGens">-</div><div class="stat-label">Generations</div></div>
+                <div class="stat-card"><div class="stat-value" id="statFiles">-</div><div class="stat-label">Files</div></div>
+                <div class="stat-card"><div class="stat-value" id="statDNA">-</div><div class="stat-label">DNA Contexts</div></div>
+            </div>
+
+            <div class="dna-grid" id="dnaGrid" style="display:none;">
+                <div class="dna-card strategic">
+                    <div class="dna-label">🎯 Strategic Context</div>
+                    <div class="dna-text" id="strategicText">No strategic context yet</div>
+                </div>
+                <div class="dna-card tactical">
+                    <div class="dna-label">⚡ Tactical Context</div>
+                    <div class="dna-text" id="tacticalText">No tactical context yet</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span>📊 Recent Generations</span>
+                        <button id="btnBatchMove" class="btn btn-outline" style="display: none; padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="promptBatchMove()">🔀 Move Selected</button>
+                        <button id="btnBatchDelete" class="btn btn-danger" style="display: none; padding: 0.2rem 0.5rem; font-size: 0.7rem;" onclick="promptBatchDelete()">🗑️ Delete Selected (<span id="batchCount">0</span>)</button>
+                    </div>
+                    <button id="btnDeleteProject" class="btn btn-danger" style="display: none; padding: 0.3rem 0.6rem; font-size: 0.7rem;" onclick="deleteCurrentProject()">🗑️ Delete Project</button>
+                </div>
+                <table class="gen-table">
+                    <thead><tr><th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAllGens" onclick="toggleAllGens(this)"></th><th>#</th><th>Prompt</th><th>Status</th><th>Date</th></tr></thead>
+                    <tbody id="genTableBody"><tr><td colspan="5" class="empty">Select a project</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for details -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Generation Details</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-actions">
+                    <button class="btn btn-outline" onclick="copyText('prompt')">📋 Copy Prompt</button>
+                    <button class="btn btn-outline" onclick="copyText('response')">💬 Copy Response</button>
+                    <button class="btn btn-danger" onclick="deleteEntry()" style="margin-left: auto;">🗑️ Delete</button>
+                </div>
+
+                <div class="detail-section">
+                    <div class="detail-label">Prompt</div>
+                    <div class="detail-text" id="modalPrompt"></div>
+                </div>
+
+                <div class="detail-section">
+                    <div class="detail-label">AI Response</div>
+                    <div class="detail-text" id="modalResponse"></div>
+                </div>
+
+                <div class="detail-section" id="modalImagesSection">
+                    <div class="detail-label">Generated Images</div>
+                    <div class="image-grid" id="modalImageGrid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Create Project -->
+    <div class="modal-overlay" id="createProjectModal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>✨ Create Project</h2>
+                <button class="close-btn" onclick="document.getElementById('createProjectModal').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="detail-section">
+                    <label class="detail-label">Project Name</label>
+                    <input type="text" id="newProjectName" class="search-box" placeholder="e.g. Ksar Project">
+                </div>
+                <div class="detail-section">
+                    <label class="detail-label">Project ID (Slug)</label>
+                    <input type="text" id="newProjectSlug" class="search-box" placeholder="e.g. ksar-me">
+                </div>
+                <button class="btn btn-outline" style="justify-content: center; background: rgba(34,211,238,0.1); border-color: var(--accent); color: var(--accent); margin-top: 1rem;" onclick="submitCreateProject()">Create Project</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Delete Project -->
+    <div class="modal-overlay" id="deleteProjectModal">
+        <div class="modal-content" style="max-width: 400px; border-color: rgba(239, 68, 68, 0.3);">
+            <div class="modal-header">
+                <h2 style="color: var(--red);">⚠️ Delete Project</h2>
+                <button class="close-btn" onclick="document.getElementById('deleteProjectModal').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: var(--text-dim);">Are you absolutely sure you want to delete <b id="delProjectName" style="color:var(--text)"></b> and ALL its generations data? This cannot be undone.</p>
+                <div class="detail-section" style="margin-top: 1rem;">
+                    <label class="detail-label">Type Project ID to confirm</label>
+                    <input type="text" id="confirmDeleteSlug" class="search-box" placeholder="Type ID here...">
+                </div>
+                <button class="btn btn-danger" style="justify-content: center; margin-top: 1rem;" onclick="submitDeleteProject()">Permanently Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Batch Delete -->
+    <div class="modal-overlay" id="batchDeleteModal">
+        <div class="modal-content" style="max-width: 400px; border-color: rgba(239, 68, 68, 0.3);">
+            <div class="modal-header">
+                <h2 style="color: var(--red);">⚠️ Delete Generations</h2>
+                <button class="close-btn" onclick="document.getElementById('batchDeleteModal').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: var(--text-dim);">Are you sure you want to permanently delete <b id="batchDeleteAmount" style="color:var(--text)"></b> selected generations?</p>
+                <div class="modal-actions" style="margin-top: 1.5rem; justify-content: flex-end; padding-bottom: 0;">
+                    <button class="btn btn-outline" onclick="document.getElementById('batchDeleteModal').style.display='none'">Cancel</button>
+                    <button class="btn btn-danger" onclick="executeBatchDelete()">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Batch Move -->
+    <div class="modal-overlay" id="batchMoveModal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>🔀 Move Generations</h2>
+                <button class="close-btn" onclick="document.getElementById('batchMoveModal').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: var(--text-dim);">Select destination project for <b id="batchMoveAmount" style="color:var(--text)"></b> generations:</p>
+                <div class="detail-section" style="margin-top: 1rem;">
+                    <select id="moveProjectSelect" class="search-box" style="width: 100%;">
+                        <!-- options injected via js -->
+                    </select>
+                </div>
+                <div class="modal-actions" style="margin-top: 1.5rem; justify-content: flex-end; padding-bottom: 0;">
+                    <button class="btn btn-outline" onclick="document.getElementById('batchMoveModal').style.display='none'">Cancel</button>
+                    <button class="btn btn-primary" onclick="executeBatchMove()">Move</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API = window.location.hostname === 'localhost'
+            ? 'http://localhost:8000'
+            : `http://${window.location.hostname}:8000`;
+
+        let currentSlug = null;
+        let currentGenerations = [];
+        let globalProjects = [];
+        let selectedEntry = null;
+
+        // Check API health
+        async function checkHealth() {
+            try {
+                const r = await fetch(`${API}/v1/dna/health`);
+                if (r.ok) {
+                    const statusEl = document.getElementById('api-status');
+                    statusEl.textContent = 'System Online';
+                    document.querySelector('.status-dot').style.background = 'var(--green)';
+                } else throw new Error();
+            } catch {
+                document.getElementById('api-status').textContent = 'API Offline';
+                document.querySelector('.status-dot').style.background = 'var(--red)';
+            }
+        }
+
+        // Load projects
+        async function loadProjects() {
+            try {
+                const r = await fetch(`${API}/v1/dna/projects`);
+                const data = await r.json();
+                const projects = data.projects || data;
+                globalProjects = projects;
+                const list = document.getElementById('projectList');
+
+                document.getElementById('statProjects').textContent = projects.length;
+
+                if (!projects.length) {
+                    list.innerHTML = '<div class="empty">No projects yet</div>';
+                    return;
+                }
+
+                list.innerHTML = projects.map(p => `
+                    <div class="project-item ${p.slug === currentSlug ? 'active' : ''}"
+                         onclick="selectProject('${p.slug || p.name.toLowerCase().replace(/ /g, '-')}')">
+                        <div class="name">${p.name || p.slug}</div>
+                        <div class="meta">${p.tags ? p.tags.join(', ') : 'no tags'}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Load projects error:', e);
+            }
+        }
+
+        // Select project
+        async function selectProject(slug) {
+            currentSlug = slug;
+            loadProjects(); // refresh active state
+            
+            const delBtn = document.getElementById('btnDeleteProject');
+            if (delBtn) delBtn.style.display = 'block';
+
+            // Load DNA context
+            try {
+                const r = await fetch(`${API}/v1/dna/context/${slug}`);
+                const ctx = await r.json();
+                const grid = document.getElementById('dnaGrid');
+                grid.style.display = 'grid';
+
+                document.getElementById('strategicText').textContent =
+                    ctx.strategic_context || 'Not enough data yet (need 20+ generations)';
+                document.getElementById('tacticalText').textContent =
+                    ctx.tactical_context || 'Not enough data yet (need 5+ generations)';
+
+                const hasDNA = (ctx.strategic_context ? 1 : 0) + (ctx.tactical_context ? 1 : 0);
+                document.getElementById('statDNA').textContent = hasDNA;
+            } catch (e) {
+                console.error('Load context error:', e);
+            }
+
+            // Load generations
+            try {
+                const r = await fetch(`${API}/v1/dna/generations/${slug}`);
+                const gdata = await r.json();
+                currentGenerations = gdata.generations || gdata;
+                const tbody = document.getElementById('genTableBody');
+
+                document.getElementById('statGens').textContent = currentGenerations.length;
+                document.getElementById('selectAllGens').checked = false;
+                updateBatchDeleteBtn();
+
+                if (!currentGenerations.length) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="empty">No generations</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = currentGenerations.map((g, idx) => `
+                    <tr onclick="showDetails(${idx}, event)">
+                        <td onclick="event.stopPropagation();" style="text-align: center;"><input type="checkbox" class="gen-cb" value="${g.id}" onchange="updateBatchDeleteBtn()"></td>
+                        <td>#${g.seq_num}</td>
+                        <td title="${g.prompt}">${g.prompt}</td>
+                        <td><span class="badge ${g.status === 'generated' ? 'badge-green' : 'badge-orange'}">${g.status}</span></td>
+                        <td>${new Date(g.created_at).toLocaleDateString()}</td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                console.error('Load generations error:', e);
+            }
+
+            // Load files
+            try {
+                const r = await fetch(`${API}/v1/dna/files/${slug}`);
+                const data = await r.json();
+                document.getElementById('statFiles').textContent = data.count || 0;
+            } catch { document.getElementById('statFiles').textContent = '0'; }
+        }
+
+        // Modal functions
+        function showDetails(idx, event) {
+            // Prevent opening if clicked exactly on the checkbox
+            if (event && event.target.tagName === 'INPUT') return;
+            
+            const g = currentGenerations[idx];
+            selectedEntry = g;
+            
+            document.getElementById('modalTitle').textContent = `Generation #${g.seq_num}`;
+            document.getElementById('modalPrompt').textContent = g.prompt;
+            document.getElementById('modalResponse').textContent = g.response_text || 'No response captured for this entry.';
+            
+            const imageSection = document.getElementById('modalImagesSection');
+            const imageGrid = document.getElementById('modalImageGrid');
+            
+            if (g.result_urls && g.result_urls.length > 0) {
+                imageSection.style.display = 'block';
+                imageGrid.innerHTML = g.result_urls.map(url => `
+                    <div class="image-item">
+                        <img src="${url}" alt="Generated Image" onclick="window.open('${url}', '_blank')">
+                    </div>
+                `).join('');
+            } else {
+                imageSection.style.display = 'none';
+            }
+            
+            document.getElementById('modalOverlay').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            document.getElementById('modalOverlay').style.display = 'none';
+            document.body.style.overflow = 'auto';
+        }
+
+        function copyText(type) {
+            if (!selectedEntry) return;
+            const text = type === 'prompt' ? selectedEntry.prompt : selectedEntry.response_text;
+            if (!text) return;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                alert(`${type.charAt(0).toUpperCase() + type.slice(1)} copied to clipboard!`);
+            });
+        }
+
+        async function deleteEntry() {
+            if (!selectedEntry) return;
+            
+            try {
+                const r = await fetch(`${API}/v1/dna/generations/${selectedEntry.id}`, {
+                    method: 'DELETE'
+                });
+                if (r.ok) {
+                    closeModal();
+                    selectProject(currentSlug); // Reload
+                } else {
+                    alert('Delete failed');
+                }
+            } catch (e) {
+                console.error('Delete error:', e);
+                alert('Connection error');
+            }
+        }
+
+        // Batch deletion logic
+        function toggleAllGens(source) {
+            const cbs = document.querySelectorAll('.gen-cb');
+            cbs.forEach(cb => cb.checked = source.checked);
+            updateBatchDeleteBtn();
+        }
+
+        function updateBatchDeleteBtn() {
+            const checked = document.querySelectorAll('.gen-cb:checked');
+            const btnDel = document.getElementById('btnBatchDelete');
+            const btnMove = document.getElementById('btnBatchMove');
+            if (checked.length > 0) {
+                btnDel.style.display = 'block';
+                btnMove.style.display = 'block';
+                document.getElementById('batchCount').textContent = checked.length;
+            } else {
+                btnDel.style.display = 'none';
+                btnMove.style.display = 'none';
+                const selectAll = document.getElementById('selectAllGens');
+                if (selectAll) selectAll.checked = false;
+            }
+        }
+
+        function promptBatchDelete() {
+            const checked = document.querySelectorAll('.gen-cb:checked');
+            if (checked.length === 0) return;
+            document.getElementById('batchDeleteAmount').textContent = checked.length;
+            document.getElementById('batchDeleteModal').style.display = 'flex';
+        }
+
+        async function executeBatchDelete() {
+            const checked = document.querySelectorAll('.gen-cb:checked');
+            const ids = Array.from(checked).map(cb => cb.value);
+            if (!ids.length) return;
+
+            document.getElementById('batchDeleteModal').style.display = 'none';
+            try {
+                // Delete selected generations concurrently
+                await Promise.all(ids.map(id => fetch(`${API}/v1/dna/generations/${id}`, { method: 'DELETE' })));
+                selectProject(currentSlug);
+            } catch (e) {
+                console.error('Batch delete error:', e);
+                alert('Connection error during batch delete');
+            }
+        }
+
+        // Batch Move Logic
+        function promptBatchMove() {
+            const checked = document.querySelectorAll('.gen-cb:checked');
+            if (checked.length === 0) return;
+            
+            document.getElementById('batchMoveAmount').textContent = checked.length;
+            const select = document.getElementById('moveProjectSelect');
+            select.innerHTML = '<option value="" disabled selected>-- Select target project --</option>' + 
+                globalProjects
+                    .filter(p => (p.slug || p.name) !== currentSlug) // exclude current
+                    .map(p => {
+                        const s = p.slug || p.name.toLowerCase().replace(/ /g, '-');
+                        return `<option value="${s}">${p.name || s}</option>`;
+                    }).join('');
+                    
+            document.getElementById('batchMoveModal').style.display = 'flex';
+        }
+
+        async function executeBatchMove() {
+            const targetProject = document.getElementById('moveProjectSelect').value;
+            if (!targetProject) return alert("Please select a target project");
+
+            const checked = document.querySelectorAll('.gen-cb:checked');
+            const ids = Array.from(checked).map(cb => cb.value);
+            if (!ids.length) return;
+
+            document.getElementById('batchMoveModal').style.display = 'none';
+            try {
+                // Execute move in backend endpoint: PUT /v1/dna/generations/{id}?target_project=slug
+                await Promise.all(ids.map(id => fetch(`${API}/v1/dna/generations/${id}?target_project=${targetProject}`, { method: 'PUT' })));
+                selectProject(currentSlug);
+            } catch (e) {
+                console.error('Batch move error:', e);
+                alert('Connection error during batch move');
+            }
+        }
+
+        // Project Management
+        function promptCreateProject() {
+            document.getElementById('newProjectName').value = '';
+            document.getElementById('newProjectSlug').value = '';
+            document.getElementById('createProjectModal').style.display = 'flex';
+            document.getElementById('newProjectName').focus();
+        }
+
+        async function submitCreateProject() {
+            const name = document.getElementById('newProjectName').value.trim();
+            const slug = document.getElementById('newProjectSlug').value.trim();
+            if (!name || !slug) return;
+
+            try {
+                const r = await fetch(`${API}/v1/dna/projects`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ name, slug })
+                });
+                if (r.ok) {
+                    document.getElementById('createProjectModal').style.display = 'none';
+                    loadProjects(); // UI updates instantly
+                } else {
+                    const err = await r.json();
+                    alert("Failed to create project: " + (err.detail || err.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert("Connection error: " + e.message);
+            }
+        }
+
+        function deleteCurrentProject() {
+            if (!currentSlug) return;
+            document.getElementById('delProjectName').textContent = currentSlug;
+            document.getElementById('confirmDeleteSlug').value = '';
+            document.getElementById('deleteProjectModal').style.display = 'flex';
+            document.getElementById('confirmDeleteSlug').focus();
+        }
+
+        async function submitDeleteProject() {
+            if (!currentSlug) return;
+            const confirmVal = document.getElementById('confirmDeleteSlug').value.trim();
+            if (confirmVal !== currentSlug) {
+                document.getElementById('confirmDeleteSlug').style.borderColor = 'var(--red)';
+                return;
+            }
+
+            try {
+                const r = await fetch(`${API}/v1/dna/projects/${currentSlug}`, {
+                    method: 'DELETE'
+                });
+                if (r.ok) {
+                    document.getElementById('deleteProjectModal').style.display = 'none';
+                    currentSlug = null;
+                    document.getElementById('btnDeleteProject').style.display = 'none';
+                    document.getElementById('genTableBody').innerHTML = '<tr><td colspan="4" class="empty">Select a project</td></tr>';
+                    
+                    document.getElementById('strategicText').textContent = 'No strategic context yet';
+                    document.getElementById('tacticalText').textContent = 'No tactical context yet';
+                    document.getElementById('statGens').textContent = '-';
+                    document.getElementById('statFiles').textContent = '-';
+                    document.getElementById('statDNA').textContent = '-';
+                    
+                    loadProjects();
+                } else {
+                    const err = await r.json();
+                    alert("Failed to delete project: " + (err.detail || err.error || 'Unknown error'));
+                }
+            } catch (e) {
+                alert("Connection error: " + e.message);
+            }
+        }
+
+        // Semantic search
+        async function doSearch() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) return;
+
+            const container = document.getElementById('searchResults');
+            container.innerHTML = '<div class="empty">Searching...</div>';
+
+            try {
+                const r = await fetch(`${API}/v1/dna/search`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ query, limit: 5 })
+                });
+                const data = await r.json();
+
+                if (!data.results.length) {
+                    container.innerHTML = '<div class="empty">No matches found</div>';
+                    return;
+                }
+
+                container.innerHTML = data.results.map(r => `
+                    <div class="search-result">
+                        <div class="search-score">Score: ${(r.score * 100).toFixed(1)}%</div>
+                        <div class="search-prompt">${r.text}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                container.innerHTML = '<div class="empty">Search error</div>';
+            }
+        }
+
+        // Init
+        checkHealth();
+        loadProjects();
+        setInterval(checkHealth, 15000);
+
+        // Close modal on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+        
+        // Close modal on background click
+        document.getElementById('modalOverlay').addEventListener('click', (e) => {
+            if (e.target.id === 'modalOverlay') closeModal();
+        });
+    </script>
+</body>
+</html>
+

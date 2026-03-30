@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s # Как часто собирать метрики (каждые 15 сек)
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Самосбор метрик (Prometheus мониторит сам себя)
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Сбор метрик с Docker-контейнеров с машины Ubuntu (cAdvisor)
+  - job_name: 'telegraf'
+    static_configs:
+      - targets: ['telegraf:9273']
+
