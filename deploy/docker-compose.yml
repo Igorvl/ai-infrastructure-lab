@@ -9,12 +9,12 @@ services:
       - "8000:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    env_file:
+      - .env          # ← весь .env целиком попадает в контейнер      
     environment:
+      - PYTHONUNBUFFERED=1    
       - HF_HOME=/app/models
       - CONFIG_PATH=deploy/antigravity.json
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_API_KEY_2=${GEMINI_API_KEY_2}
-      - GEMINI_API_KEY_3=${GEMINI_API_KEY_3}
       - SILICONFLOW_API_KEY=${SILICONFLOW_API_KEY}
       - SALUTE_SPEECH_KEY=${SALUTE_SPEECH_KEY}
       - http_proxy=http://host.docker.internal:10808

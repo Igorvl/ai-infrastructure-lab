@@ -8,6 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from db import db
 from api_dna import router as dna_router
+from routing.dna_capture_middleware import (
+    extract_project_slug,
+    extract_real_model,
+    extract_user_prompt,
+    build_conversation_context,
+    capture_to_dna,
+)
 
 # Silero TTS: set cache dir BEFORE importing torch (fix Permission denied)
 os.environ['TORCH_HOME'] = '/tmp/torch_cache'
@@ -28,6 +35,7 @@ app = FastAPI(title="Project DNA Router")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -802,45 +810,123 @@ async def generate_audio(text: str) -> str:
     logger.error("TTS: all backends failed")
     return ""
 
-# ========== LLM WITH KEY ROTATION ==========
-async def call_with_key_rotation(mid, messages, api_key_env, api_base, stream):
-    keys = get_all_keys(api_key_env)
-    if not keys:
-        raise ValueError(f"No API keys for {api_key_env}")
-    start_idx = KEY_INDEX.get(api_key_env, 0) % len(keys) if keys else 0
-    last_error = None
-    for attempt in range(len(keys)):
-        idx = (start_idx + attempt) % len(keys)
-        key = keys[idx]
-        key_label = f"key_{idx+1}/{len(keys)}"
-        try:
-            logger.info(f"Calling {mid} [{key_label}]")
-            resp = await acompletion(
-                model=mid, messages=messages,
-                api_key=key, api_base=api_base, stream=stream
-            )
-            KEY_INDEX[api_key_env] = idx + 1
-            return resp
-        except Exception as e:
-            last_error = e
-            is_rate_limit = "429" in str(e) or "RateLimitError" in type(e).__name__
-            if is_rate_limit and attempt < len(keys) - 1:
-                logger.warning(f"429 on {mid} [{key_label}], rotating...")
-                continue
-            else:
-                raise
-    raise last_error
+# ========== Helper ПЕРЕД call_with_key_rotation =============
+async def _prepend_chunk(first_chunk, stream):
+    """Восстанавливает стрим: возвращает уже прочитанный первый чанк + остаток."""
+    yield first_chunk
+    async for chunk in stream:
+        yield chunk
+async def delete_generation_api(generation_id: str):
+    from db import db
+    success = await db.delete_generation(generation_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Generation not found or already deleted")
+    return {"status": "success", "deleted_id": generation_id}
+
+
+
+@app.delete("/v1/dna/projects/{project_slug}")
+async def delete_project_api(project_slug: str):
+    from db import db
+    success = await db.delete_project(project_slug)
+    if not success:
+        raise HTTPException(status_code=404, detail="Project not found or already deleted")
+    return {"status": "success", "deleted_slug": project_slug}
+
+
+@app.put("/v1/dna/generations/{generation_id}")
+async def move_generation_api(generation_id: str, target_project: str):
+    """Переносит запись генерации в другой проект по slug"""
+    from db import db
+    success = await db.move_generation(generation_id, target_project)
+    if not success:
+        raise HTTPException(status_code=400, detail="Move failed. Generation or target project not found.")
+    return {"status": "success", "moved_id": generation_id, "new_project": target_project}
+
 
 # ========== CHAT ==========
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatRequest):
+    # --- ИМПОРТЫ ДЛЯ СОРТИРОВЩИКА (Если еще не вынесены в начало) ---
+    from semantic_router import semantic_auto_detect, ROUTING_CACHE, get_active_projects_dna
+    from db import db
+    import hashlib
+    import json
+    # -------------------------------------------------------------
+
     config = load_config()
-    last_msg = str(request.messages[-1].get("content", ""))
+    
+    # Делаем копию массива сообщений в виде чистых словарей для безопасной модификации
+    raw_messages = [m.model_dump() if hasattr(m, 'model_dump') else dict(m) for m in request.messages]
+    
+    last_msg = str(raw_messages[-1].get("content", ""))
     voice_intent = any(w in last_msg.lower() for w in ["voice", "read aloud", "tts"])
-    # Also check Russian voice command
     if not voice_intent:
         voice_intent = "\u043e\u0437\u0432\u0443\u0447\u044c" in last_msg.lower()
     logger.info(f"REQUEST model={request.model} voice={voice_intent} msg={last_msg[:80]}")
+
+    # ===== [DNA CAPTURE] Извлекаем метаданные =====
+    project_slug = extract_project_slug(request.model, raw_messages)
+    
+    # 🌟 === [AGENTIC INTERCEPTOR & SEMANTIC ROUTER] === 🌟
+    # Если расширение или OWUI не прислали четкий slug (попало в дефолтную корзину)
+    if project_slug == "open-webui" or not project_slug:
+        detected_slug = await semantic_auto_detect(raw_messages, db, call_with_key_rotation)
+        
+        # --- БЛОК 1: Проверяем, не отвечает ли юзер на наш перехват (указана ли цифра) ---
+        if detected_slug == "UNKNOWN" and len(raw_messages) >= 3:
+            prev_msg_content = str(raw_messages[-2].get("content", ""))
+            if "🚦 **Система DNA:**" in prev_msg_content:
+                user_reply = str(raw_messages[-1].get("content", "")).strip()
+                try:
+                    choice = int(user_reply)
+                    projects = await get_active_projects_dna(db)
+                    
+                    if 1 <= choice <= len(projects):
+                        detected_slug = projects[choice-1]["slug"]
+                        
+                        # Жестко кэшируем выбор по хэшу самого ПЕРВОГО сообщения в этом чате!
+                        first_msg = str(raw_messages[0].get("content", ""))
+                        msg_hash = hashlib.md5(first_msg.encode('utf-8')).hexdigest()
+                        ROUTING_CACHE[msg_hash] = detected_slug
+                        
+                        # 🔥 ВЫРЕЗАЕМ 2 МУСОРНЫХ СООБЩЕНИЯ ИЗ ИСТОРИИ 🔥
+                        raw_messages = raw_messages[:-2]
+                        logger.info(f"[INTERCEPTOR] Мусор стерт. Выбран проект: {detected_slug}")
+                        
+                    elif choice == len(projects) + 1:
+                        detected_slug = "trash" # Не сохранять в базу
+                        raw_messages = raw_messages[:-2] # Мусор тоже вырезаем
+                except ValueError:
+                    pass # Юзер ввел не цифру, игнорируем
+
+        # --- БЛОК 2: Сортировщик фейлится -> Стримим меню выбора прямо в чат OWUI ---
+        if detected_slug == "UNKNOWN":
+            projects = await get_active_projects_dna(db)
+            
+            async def agentic_interceptor_stream():
+                options = "\n".join([f"{i+1}. {p['slug']} ({p['name']})" for i, p in enumerate(projects)])
+                options += f"\n{len(projects)+1}. Мусор (Не сохранять)"
+                msg = f"🚦 **Система DNA:** Я не уверен, к какому проекту относится этот чат. Напиши цифру:\n\n{options}"
+                
+                # Фейкуем ответ от реальной нейросети:
+                yield f'data: {json.dumps({"id":"interceptor","object":"chat.completion.chunk","choices":[{"delta":{"content":msg}}]})}\n\n'
+                yield 'data: [DONE]\n\n'
+                
+            from fastapi.responses import StreamingResponse
+            return StreamingResponse(agentic_interceptor_stream(), media_type='text/event-stream')
+
+        # Успешно определили проект (ИИ, кэшем или выбором юзера)
+        project_slug = detected_slug
+    # ============================================================
+
+    real_model = extract_real_model(request.model)
+    # Метаданные теперь строятся на базе ОЧИЩЕННОГО массива сообщений!
+    prompt_text = extract_user_prompt(raw_messages)
+    conversation_context = build_conversation_context(raw_messages)
+
+    # Меняем модель в request на реальную для вызова LLM
+    request.model = real_model
 
     def get_params(name):
         for item in config.get("model_list", []):
@@ -853,7 +939,9 @@ async def chat_completions(request: ChatRequest):
 
     queue = [target] + [get_params(fb) for fb in target.get("fallbacks", []) if get_params(fb)]
 
-    messages = list(request.messages)
+    # Здесь формируется итоговый массив сообщений для LLM (чистый, без системных диалогов-опросов!)
+    messages = list(raw_messages)
+    
     if voice_intent:
         messages.insert(0, {"role": "system", "content": VOICE_SYSTEM_PROMPT})
         logger.info("Voice mode: injected system prompt for raw text output")
@@ -867,26 +955,143 @@ async def chat_completions(request: ChatRequest):
                 api_base=current.get("api_base"),
                 stream=request.stream and not voice_intent
             )
+
+            # --- Обработка VOICE режима ---
             if voice_intent:
                 txt = resp.choices[0].message.content
                 logger.info(f"Voice mode: model returned {len(txt)} chars")
-                logger.info(f"Voice preview: {txt[:100]}")
                 url = await generate_audio(txt)
                 if url:
                     resp.choices[0].message.content += f"\n\n\U0001f3a7 **Audio:** [Download audio]({url})"
                 else:
                     resp.choices[0].message.content += "\n\n\u26a0\ufe0f Failed to generate audio"
-                    logger.error("No audio generated")
+
+                if project_slug != "trash":
+                    import asyncio
+                    asyncio.create_task(capture_to_dna(
+                        project_slug, real_model, prompt_text, resp.choices[0].message.content, conversation_context
+                    ))
                 return resp
+
+            # --- Обработка STREAMING режима ---
             if request.stream:
+                try:
+                    # 🔥 ТРЮК: Пытаемся получить первый чанк до старта стрима
+                    first_chunk = await resp.__anext__()
+                except Exception as e:
+                    # Если модель упала сразу (например, 429) - пробрасываем ошибку во внешний цикл!
+                    # Это активирует следующую fallbacks модель из очереди!
+                    raise e
+                    
                 async def gen():
-                    async for chunk in resp: yield f"data: {chunk.model_dump_json()}\n\n"
-                    yield "data: [DONE]\n\n"
+                    collected_chunks = []
+                    try:
+                        # Отдаем спасенный первый чанк
+                        if hasattr(first_chunk.choices[0], 'delta') and first_chunk.choices[0].delta.content:
+                            collected_chunks.append(first_chunk.choices[0].delta.content)
+                        yield f"data: {first_chunk.model_dump_json()}\n\n"
+                        
+                        # Докручиваем остальные чанки
+                        async for chunk in resp:
+                            if chunk.choices and hasattr(chunk.choices[0], 'delta') and chunk.choices[0].delta.content:
+                                collected_chunks.append(chunk.choices[0].delta.content)
+                            yield f"data: {chunk.model_dump_json()}\n\n"
+                            
+                        # Подписываем модель, если сработал Fallback
+                        requested_mid = target.get("model")
+                        if mid != requested_mid:
+                            sign_txt = f"\n\n> 🔄 *Fallback-модель:* `{mid}`"
+                            import json
+                            signature_chunk = json.dumps({
+                                "id": "fallback-sign", "object": "chat.completion.chunk", 
+                                "choices": [{"delta": {"content": sign_txt}}]
+                            })
+                            yield f"data: {signature_chunk}\n\n"
+                            collected_chunks.append(sign_txt)
+                            
+                    except Exception as stream_e:
+                        logger.error(f"Mid-stream error: {stream_e}")
+                        import json
+                        err_msg = "\n\n*[⚠️ DNA Interruption: Соединение с моделью прервано]*"
+                        fallback_chunk = json.dumps({"id": "err", "object": "chat.completion.chunk", "choices": [{"delta": {"content": err_msg}}]})
+                        yield f"data: {fallback_chunk}\n\n"
+                    finally:
+                        yield "data: [DONE]\n\n"
+                        full_response = "".join(collected_chunks)
+                        if project_slug != "trash":
+                            import asyncio
+                            asyncio.create_task(capture_to_dna(
+                                project_slug, real_model, prompt_text, full_response, conversation_context
+                            ))
+                from fastapi.responses import StreamingResponse
                 return StreamingResponse(gen(), media_type='text/event-stream')
+
+            # --- Обработка СИНХРОННОГО режима ---
+            requested_mid = target.get("model")
+            if mid != requested_mid:
+                resp.choices[0].message.content += f"\n\n> 🔄 *Fallback-модель:* `{mid}`"
+
+            if project_slug != "trash":
+                import asyncio
+                asyncio.create_task(capture_to_dna(
+                    project_slug, real_model, prompt_text, resp.choices[0].message.content, conversation_context
+                ))
             return resp
+
         except Exception as e:
             logger.error(f"Fail on {mid}: {e}")
             continue
+            
     raise HTTPException(status_code=502)
 
 
+async def _prepend_chunk(chunk, async_gen):
+    yield chunk
+    async for item in async_gen:
+        yield item
+async def call_with_key_rotation(mid, messages, api_key_env, api_base, stream):
+    keys = get_all_keys(api_key_env)
+    if not keys:
+        raise ValueError(f"No API keys for {api_key_env}")
+    
+    start_idx = KEY_INDEX.get(api_key_env, 0) % len(keys) if keys else 0
+    last_error = None
+    
+    for attempt in range(len(keys)):
+        idx = (start_idx + attempt) % len(keys)
+        key = keys[idx]
+        key_label = f"key_{idx+1}/{len(keys)}"
+        
+        try:
+            logger.info(f"Calling {mid} [{key_label}]")
+            resp = await acompletion(
+                model=mid, 
+                messages=messages,
+                api_key=key, 
+                api_base=api_base, 
+                stream=stream,
+                timeout=15  # <--- Защита от зависания DeepSeek/серверов
+            )
+            
+            if stream:
+                # Pre-fetch: ловим RateLimit СРАЗУ, не отдавая поток наверх
+                first_chunk = await resp.__anext__()
+                KEY_INDEX[api_key_env] = idx + 1
+                return _prepend_chunk(first_chunk, resp)
+                
+            KEY_INDEX[api_key_env] = idx + 1
+            return resp
+            
+        except Exception as e:
+            last_error = e
+            err_str = str(e) + type(e).__name__
+            is_rate_limit = "429" in err_str or "RateLimit" in err_str or "MidStreamFallbackError" in err_str
+            
+            if is_rate_limit and attempt < len(keys) - 1:
+                logger.warning(f"429 Limit on {mid} [{key_label}], rotating to next key...")
+                continue
+            else:
+                logger.error(f"Error on {mid} [{key_label}]: {type(e).__name__} (Attempt {attempt+1}/{len(keys)})")
+                continue # Если не rate limit, крутить ли ключи? Да, возможно упал сам сервер OpenAI. Попробуем следующий ключ.
+                
+    raise last_error

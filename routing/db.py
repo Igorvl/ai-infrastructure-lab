@@ -48,9 +48,9 @@ class DatabaseManager:
     async def list_projects(self, status: str = None) -> List[dict]:
         if status:
             rows = await self.pool.fetch(
-                "SELECT * FROM v_project_stats WHERE status = $1 ORDER BY name", status)
+                "SELECT v.*, p.slug FROM v_project_stats v JOIN projects p ON p.id = v.id WHERE v.status = $1 ORDER BY v.name", status)
         else:
-            rows = await self.pool.fetch("SELECT * FROM v_project_stats ORDER BY name")
+            rows = await self.pool.fetch("SELECT v.*, p.slug FROM v_project_stats v JOIN projects p ON p.id = v.id ORDER BY v.name")
         return [dict(r) for r in rows]
 
     async def get_project(self, slug: str) -> Optional[dict]:
@@ -72,7 +72,66 @@ class DatabaseManager:
             dna_document, slug)
         return dict(row) if row else None
 
-    # ==================== ACCOUNTS ====================
+    async def delete_project(self, slug: str) -> bool:
+        if self.pool is None: return False
+        
+        try:
+            async with self.pool.acquire() as conn:
+                # 1. Забираем ID надёжным прямым запросом
+                proj = await conn.fetchrow("SELECT id FROM projects WHERE slug = $1 OR name = $1 LIMIT 1", slug)
+                if not proj:
+                    print(f"[DNA DELETE] Ошибка: проект {slug} не найден в БД!")
+                    return False
+                    
+                pid = proj['id']
+                
+                # 2. Вычищаем ВСЕ возможные хвосты по всем таблицам из скриншота
+                await conn.execute("DELETE FROM context_summaries WHERE project_id = $1", pid)
+                await conn.execute("DELETE FROM project_accounts WHERE project_id = $1", pid)
+                await conn.execute("DELETE FROM sessions WHERE project_id = $1", pid)
+                await conn.execute("DELETE FROM generations WHERE project_id = $1", pid)
+                
+                # 3. Сносим сам проект
+                await conn.execute("DELETE FROM projects WHERE id = $1", pid)
+                
+                print(f"[DNA DELETE] ✅ Ядерная зачистка проекта {slug} завершена!")
+                return True
+        except Exception as e:
+            print(f"[DNA DELETE] 💥 КРАШ БАЗЫ ПРИ УДАЛЕНИИ: {e}")
+            return False
+
+    async def delete_generation(self, generation_id: str) -> bool:
+        if self.pool is None: return False
+        try:
+            async with self.pool.acquire() as conn:
+                # В отличие от id проекта, тут UUID напрямую используется в таблице
+                res = await conn.execute("DELETE FROM generations WHERE id = $1::uuid", generation_id)
+                return res != "DELETE 0"
+        except Exception as e:
+            print(f"[DNA DELETE] Ошибка удаления генерации {generation_id}: {e}")
+            return False
+
+    async def move_generation(self, generation_id: str, target_slug: str) -> bool:
+        if self.pool is None: return False
+        try:
+            async with self.pool.acquire() as conn:
+                # 1. Находим настоящий UUID целевого проекта по его slug
+                project_row = await conn.fetchrow("SELECT id FROM projects WHERE slug = $1", target_slug)
+                if not project_row:
+                    return False
+
+                # 2. Перекидываем генерацию в него
+                res = await conn.execute(
+                    "UPDATE generations SET project_id = $1 WHERE id = $2::uuid",
+                    project_row["id"], generation_id
+                )
+                return res != "UPDATE 0"
+        except Exception as e:
+            print(f"[DNA MOVE] Ошибка переноса генерации {generation_id}: {e}")
+            return False
+
+
+# ==================== ACCOUNTS ====================
 
     async def list_accounts(self, active_only: bool = True) -> List[dict]:
         if active_only:
