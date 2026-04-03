@@ -7,6 +7,8 @@
                 "api_key_env": "GEMINI_API_KEY",
                 "fallbacks": [
                     "gemini-2.0-fallback",
+                    "qwen3-plus-openrouter",
+                    "qwen3-coder-free",
                     "deepseek-v3",
                     "qwen-max",
                     "GLM_5"
@@ -20,6 +22,7 @@
                 "api_key_env": "GEMINI_API_KEY",
                 "fallbacks": [
                     "gemini-2.0-fallback",
+                    "qwen3-plus-openrouter",
                     "deepseek-v3"
                 ]
             }
@@ -29,6 +32,14 @@
             "litellm_params": {
                 "model": "gemini/gemini-2.0-flash",
                 "api_key_env": "GEMINI_API_KEY"
+            }
+        },
+        {
+            "model_name": "qwen3-plus-openrouter",
+            "litellm_params": {
+                "model": "openrouter/qwen/qwen3.6-plus:free",
+                "api_base": "https://openrouter.ai/api/v1",
+                "api_key_env": "OPENROUTER_API_KEY"
             }
         },
         {
@@ -70,7 +81,14 @@
                 "api_base": "https://api.siliconflow.com/v1",
                 "api_key_env": "SILICONFLOW_API_KEY"
             }
+        },
+        {
+            "model_name": "qwen3-coder-free",
+            "litellm_params": {
+                "model": "openrouter/qwen/qwen3-coder:free",
+                "api_base": "https://openrouter.ai/api/v1",
+                "api_key_env": "OPENROUTER_API_KEY"
+            }
         }
     ]
 }
-
