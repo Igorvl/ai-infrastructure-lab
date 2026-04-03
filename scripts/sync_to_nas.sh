@@ -1,5 +1,5 @@
 #!/bin/bash
-# G12-next: Project DNA Data Sync → NAS Mirror
+# G12-next: Project DNA Data Sync → NAS + ntfy.sh alerts
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/../deploy/.env"
@@ -7,13 +7,13 @@ LOG_DIR="$SCRIPT_DIR/../logs"
 LOG_FILE="$LOG_DIR/sync_$(date +%Y%m%d).log"
 TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
 TMP_DIR="/tmp/dna_sync_$TIMESTAMP"
-# Безопасный парсинг .env (каждую переменную отдельно, спецсимволы не пугают)
 get_env() { grep "^${1}=" "$ENV_FILE" | head -1 | cut -d= -f2-; }
 NAS_HOST=$(get_env NAS_HOST)
 NAS_USER=$(get_env NAS_USER)
 NAS_SSH_PASS=$(get_env NAS_SSH_PASS)
 PG_USER=$(get_env PG_USER)
 PG_PASSWORD=$(get_env PG_PASSWORD)
+NTFY_TOPIC=$(get_env NTFY_TOPIC)
 QDRANT_COLLECTIONS=("project_prompts" "test_collection")
 PG_CONTAINER="ai-postgres"
 PG_DB="project_dna"
@@ -28,6 +28,15 @@ log_warn(){ echo "[$(date +%H:%M:%S)] ⚠️  $1"; }
 log_err() { echo "[$(date +%H:%M:%S)] ❌ $1"; }
 nas_rsync() { sshpass -p "$NAS_SSH_PASS" rsync -avz "$1" "$NAS_USER@$NAS_HOST:$2"; }
 nas_ssh()   { sshpass -p "$NAS_SSH_PASS" ssh "$NAS_USER@$NAS_HOST" "$@"; }
+# ntfy.sh notification
+notify() {
+    local title="$1" msg="$2" priority="${3:-default}" tags="${4:-floppy_disk}"
+    curl -s --max-time 8 \
+        -H "Title: $title" \
+        -H "Priority: $priority" \
+        -H "Tags: $tags" \
+        -d "$msg" "https://ntfy.sh/$NTFY_TOPIC" > /dev/null || true
+}
 sync_postgres() {
     log "📊 PostgreSQL backup..."
     local dump="$TMP_DIR/${PG_DB}_${TIMESTAMP}.sql.gz"
@@ -58,23 +67,41 @@ sync_qdrant() {
 sync_minio() {
     log "📦 MinIO mirror..."
     for BUCKET in $(mc ls local/ 2>/dev/null | awk '{print $NF}' | tr -d '/'); do
-        log "  🪣  $BUCKET..."
         mc mb --ignore-existing "nas/$BUCKET" 2>/dev/null || true
-        mc mirror --overwrite "local/$BUCKET" "nas/$BUCKET" 2>&1 | \
-            grep -vE "^$|Calculating" || true
-        log_ok "$BUCKET done"
+        mc mirror --overwrite "local/$BUCKET" "nas/$BUCKET" 2>&1 | grep -vE "^$|Calculating" || true
+        log_ok "$BUCKET mirrored"
     done
 }
 log "══════════════════════════════════════"
 log "🚀 Sync Start: $TIMESTAMP"
-log "   Target: $NAS_USER@$NAS_HOST"
 log "══════════════════════════════════════"
 ERRORS=0
-sync_postgres || { log_err "PostgreSQL FAILED"; ERRORS=$((ERRORS+1)); }
-sync_qdrant   || { log_err "Qdrant FAILED";     ERRORS=$((ERRORS+1)); }
-sync_minio    || { log_err "MinIO FAILED";      ERRORS=$((ERRORS+1)); }
+FAILED_COMPONENTS=""
+sync_postgres || {
+    log_err "PostgreSQL FAILED"
+    ERRORS=$((ERRORS+1))
+    FAILED_COMPONENTS="${FAILED_COMPONENTS} PostgreSQL"
+}
+sync_qdrant   || {
+    log_err "Qdrant FAILED"
+    ERRORS=$((ERRORS+1))
+    FAILED_COMPONENTS="${FAILED_COMPONENTS} Qdrant"
+}
+sync_minio    || {
+    log_err "MinIO FAILED"
+    ERRORS=$((ERRORS+1))
+    FAILED_COMPONENTS="${FAILED_COMPONENTS} MinIO"
+}
 rm -rf "$TMP_DIR"
 log "══════════════════════════════════════"
-[ "$ERRORS" -eq 0 ] \
-    && log_ok "All synced! Log: $LOG_FILE" \
-    || { log_err "$ERRORS component(s) failed"; exit 1; }
+if [ "$ERRORS" -eq 0 ]; then
+    log_ok "All synced!"
+    # Тихий успех — только раз в сутки (в 02:00) шлём OK
+    if [ "$(date +%H)" = "02" ]; then
+        notify "✅ DNA Sync OK" "Ежедневный отчёт: PostgreSQL + Qdrant + MinIO → NAS. $(date '+%d.%m %H:%M')" "low" "white_check_mark"
+    fi
+else
+    log_err "$ERRORS component(s) failed:$FAILED_COMPONENTS"
+    notify "❌ DNA Sync FAILED" "Сбой синхронизации:${FAILED_COMPONENTS}. $(date '+%d.%m %H:%M') Проверь: $LOG_FILE" "urgent" "rotating_light"
+    exit 1
+fi

@@ -196,6 +196,19 @@ services:
       - ai-net
 
 
+
+  ntfy:
+    image: binwiederhier/ntfy
+    container_name: ntfy
+    restart: unless-stopped
+    command: serve --cache-file /var/cache/ntfy/cache.db
+    ports:
+      - "9080:80"
+    volumes:
+      - ntfy_cache:/var/cache/ntfy
+    networks:
+      - ai-net
+
 networks:
   ai-net:
     driver: bridge
@@ -207,3 +220,4 @@ volumes:
   pg_data:
   minio_data: 
   n8n_data:
+  ntfy_cache:
