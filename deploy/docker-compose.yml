@@ -201,7 +201,7 @@ services:
     image: binwiederhier/ntfy
     container_name: ntfy
     restart: unless-stopped
-    command: serve --cache-file /var/cache/ntfy/cache.db --upstream-base-url https://ntfy.sh
+    command: serve --base-url http://172.25.9.33:9080 --cache-file /var/cache/ntfy/cache.db --upstream-base-url https://ntfy.sh
     ports:
       - "9080:80"
     volumes:
